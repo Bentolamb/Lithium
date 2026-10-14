@@ -24,6 +24,8 @@ BlockIndex BlockContainer::create(std::string opcode, std::string id) {
     block.id = id;
     block.opcode = std::move(opcode);
     byId_[id] = index;
+    definitionCache_.clear();
+    prototypeCache_.clear();
     blocks_.push_back(std::move(block));
     return index;
 }
@@ -101,6 +103,44 @@ void BlockContainer::setTopLevel(BlockIndex block, bool topLevel) {
             }
         }
     }
+}
+
+void BlockContainer::setMutation(BlockIndex block, Mutation mutation) {
+    at(block).mutation = std::move(mutation);
+    definitionCache_.clear();
+    prototypeCache_.clear();
+}
+
+const Mutation* BlockContainer::procedurePrototype(const std::string& proccode) const {
+    auto it = prototypeCache_.find(proccode);
+    if (it == prototypeCache_.end()) {
+        BlockIndex found = kNoBlock;
+        for (std::size_t i = 0; i < blocks_.size(); i++) {
+            const Block& b = blocks_[i];
+            if (b.opcode == "procedures_prototype" && b.mutation && b.mutation->proccode == proccode) {
+                found = static_cast<BlockIndex>(i);
+                break;
+            }
+        }
+        it = prototypeCache_.emplace(proccode, found).first;
+    }
+    return it->second == kNoBlock ? nullptr : &*blocks_[static_cast<std::size_t>(it->second)].mutation;
+}
+
+BlockIndex BlockContainer::procedureDefinition(const std::string& proccode) const {
+    auto it = definitionCache_.find(proccode);
+    if (it != definitionCache_.end()) return it->second;
+    BlockIndex found = kNoBlock;
+    for (std::size_t i = 0; i < blocks_.size() && found == kNoBlock; i++) {
+        const Block& b = blocks_[i];
+        if (b.opcode != "procedures_definition") continue;
+        const Input* in = b.findInput("custom_block");
+        if (in == nullptr || in->kind != Input::Kind::Block || !valid(in->block)) continue;
+        const Block& inner = at(in->block);
+        if (inner.mutation && inner.mutation->proccode == proccode) found = static_cast<BlockIndex>(i);
+    }
+    definitionCache_.emplace(proccode, found);
+    return found;
 }
 
 BlockIndex BlockContainer::getNextBlock(BlockIndex block) const {
@@ -202,9 +242,33 @@ Target& Project::addSprite(std::string name) {
     return *targets_.back();
 }
 
+Target& Project::insertBefore(std::unique_ptr<Target> clone, const Target* behind) {
+    std::size_t pos = targets_.size();
+    for (std::size_t i = 0; i < targets_.size(); i++) {
+        if (targets_[i].get() == behind) {
+            pos = i;
+            break;
+        }
+    }
+    Target& ref = *clone;
+    targets_.insert(targets_.begin() + static_cast<std::ptrdiff_t>(pos), std::move(clone));
+    return ref;
+}
+
+std::unique_ptr<Target> Project::remove(const Target* target) {
+    for (std::size_t i = 0; i < targets_.size(); i++) {
+        if (targets_[i].get() == target) {
+            std::unique_ptr<Target> out = std::move(targets_[i]);
+            targets_.erase(targets_.begin() + static_cast<std::ptrdiff_t>(i));
+            return out;
+        }
+    }
+    return nullptr;
+}
+
 Target* Project::findTarget(std::string_view name) {
     for (auto& t : targets_) {
-        if (t->name == name) return t.get();
+        if (t->isOriginal && t->name == name) return t.get();
     }
     return nullptr;
 }

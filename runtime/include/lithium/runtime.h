@@ -90,7 +90,20 @@ public:
     // hat field `matchField.first` equals `matchField.second` ignoring case).
     // Returns the started threads. Runtime.startHats in scratch-vm.
     using HatField = std::pair<std::string, std::string>;
-    std::vector<std::shared_ptr<Thread>> startHats(std::string_view opcode, const HatField* matchField = nullptr);
+    // `onlyTarget` restricts the search to one target (clone start hats).
+    std::vector<std::shared_ptr<Thread>> startHats(std::string_view opcode, const HatField* matchField = nullptr,
+                                                   Target* onlyTarget = nullptr);
+
+    // ---- clones ----------------------------------------------------------
+    static constexpr int kMaxClones = 300;
+    bool clonesAvailable() const { return cloneCounter_ < kMaxClones; }
+    // Target.makeClone + runtime.addTarget + goBehindOther. nullptr when the
+    // limit is hit or `original` is the stage.
+    Target* createClone(Target& original);
+    // runtime.disposeTarget + stopForTarget. The target stays allocated until
+    // the next step so running threads never see a dangling pointer.
+    void disposeClone(Target& clone);
+    int cloneCount() const { return cloneCounter_; }
     // Runtime.isActiveThread / isWaitingThread.
     static bool isActiveThread(const Thread& thread);
     static bool isWaitingThread(const Thread& thread);
@@ -108,6 +121,9 @@ private:
     bool turboMode_ = false;
     bool rendererAttached_ = false;
     std::uint64_t frames_ = 0;
+    int cloneCounter_ = 0;
+    std::uint64_t nextCloneSerial_ = 1;
+    std::vector<std::unique_ptr<Target>> graveyard_;
     std::mt19937_64 rng_{std::random_device{}()};
 };
 

@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "lithium/project.h"
@@ -23,6 +24,9 @@ struct ExecutionContext {
     std::optional<double> loopCounter;  // control_repeat
     std::optional<double> timerStart;   // control_wait: runtime.currentMSecs at start
     double duration = 0.0;              // control_wait: milliseconds
+    // procedures_call
+    bool executed = false;
+    std::optional<std::unordered_map<std::string, Value>> params;
     // event_broadcastandwait
     const Variable* broadcastVar = nullptr;
     bool startedThreadsSet = false;
@@ -75,6 +79,9 @@ public:
     // kNoBlock when the stack is empty or the top entry is an empty branch.
     BlockIndex peekStack() const;
     StackFrame* peekStackFrame();
+    // Procedure parameter lookup (Thread.getParam); nullptr when not found.
+    const Value* getParam(const std::string& name) const;
+    bool isRecursiveCall(const std::string& proccode) const;
     void goToNextBlock();
 };
 

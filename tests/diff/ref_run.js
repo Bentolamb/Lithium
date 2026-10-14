@@ -19,7 +19,7 @@ async function run(jsonText, frames) {
     for (let i = 0; i < frames; i++) vm.runtime._step();
     const targets = vm.runtime.targets.map(t => ({
         name: t.sprite.name,
-        isStage: t.isStage,
+        isStage: t.isStage, isOriginal: t.isOriginal,
         x: norm(t.x), y: norm(t.y), direction: norm(t.direction),
         variables: Object.fromEntries(Object.values(t.variables).filter(v => v.type === '').map(v => [v.name, norm(v.value)])),
         lists: Object.fromEntries(Object.values(t.variables).filter(v => v.type === 'list').map(v => [v.name, v.value.map(norm)])),

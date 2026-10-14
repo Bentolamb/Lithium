@@ -14,7 +14,20 @@ const BCX = (expr, name, id) => ({ bcExpr: expr, name, id: id === undefined ? 'b
 // Field values for list blocks: lf('L') -> LIST field; bf('go') -> BROADCAST_OPTION field.
 const lf = name => [name, 'l_' + name];
 const bf = (name, id) => [name, id === undefined ? 'bc_' + name : id];
-const B = (op, inputs = {}, fields = {}) => ({ op, inputs, fields });
+const B = (op, inputs = {}, fields = {}, mutation) => ({ op, inputs, fields, ...(mutation ? { mutation } : {}) });
+// Menu shadow block, e.g. CLONE('_myself_').
+const MENU = (op, field, value) => ({ menu: op, field, value });
+const CLONE = value => MENU('control_create_clone_of_menu', 'CLONE_OPTION', value);
+// Argument reporters inside a custom block definition.
+const ARG = name => B('argument_reporter_string_number', {}, { VALUE: [name, null] });
+const ARGB = name => B('argument_reporter_boolean', {}, { VALUE: [name, null] });
+// Call a custom block returned by Target.defineProc; values[i] undefined leaves the slot empty.
+const CALL = (proc, ...values) => {
+    const inputs = {};
+    proc.ids.forEach((id, i) => { if (values[i] !== undefined) inputs[id] = values[i]; });
+    return B('procedures_call', inputs, {}, { tagName: 'mutation', children: [], proccode: proc.proccode,
+        argumentids: JSON.stringify(proc.ids), warp: String(!!proc.warp) });
+};
 const S = B;
 const stack = (...stmts) => ({ stack: stmts });
 
@@ -46,6 +59,11 @@ class Target {
             const first = this.chain(spec.stack, false);
             return first ? [2, first] : null;
         }
+        if (spec && spec.menu) {
+            const mid = this.id('m');
+            this.blocks[mid] = { opcode: spec.menu, next: null, parent: null, inputs: {}, fields: { [spec.field]: [spec.value, null] }, shadow: true, topLevel: false };
+            return [1, mid];
+        }
         if (spec && spec.bc) return [1, [11, spec.name, spec.id]];
         if (spec && spec.bcExpr) return [3, this.blockFor(spec.bcExpr), [11, spec.name, spec.id]];
         if (spec && spec.lit !== undefined) return [1, [spec.num ? 4 : 10, spec.lit]];
@@ -70,6 +88,27 @@ class Target {
         this.blocks[id] = { opcode: spec.op, next: null, parent: null, inputs, fields, shadow: false, topLevel: !!topLevel,
                             ...(topLevel ? { x: 0, y: 0 } : {}), ...(spec.mutation ? { mutation: spec.mutation } : {}) };
         return id;
+    }
+    // Define a custom block. args: [{name, bool}]; returns a handle for CALL().
+    defineProc(proccode, args, warp, ...body) {
+        const ids = args.map(a => `arg_${this.name.replace(/\W/g, '')}_${a.name}`);
+        const protoId = this.id('p');
+        const shadows = {};
+        args.forEach((a, i) => {
+            const sid = this.id('a');
+            this.blocks[sid] = { opcode: a.bool ? 'argument_reporter_boolean' : 'argument_reporter_string_number', next: null, parent: protoId,
+                                 inputs: {}, fields: { VALUE: [a.name, null] }, shadow: true, topLevel: false };
+            shadows[ids[i]] = [1, sid];
+        });
+        const defId = this.id('d');
+        this.blocks[protoId] = { opcode: 'procedures_prototype', next: null, parent: defId, inputs: shadows, fields: {}, shadow: true, topLevel: false,
+            mutation: { tagName: 'mutation', children: [], proccode, argumentids: JSON.stringify(ids), argumentnames: JSON.stringify(args.map(a => a.name)),
+                        argumentdefaults: JSON.stringify(args.map(a => a.bool ? 'false' : '')), warp: String(!!warp) } };
+        this.blocks[defId] = { opcode: 'procedures_definition', next: null, parent: null, inputs: { custom_block: [1, protoId] }, fields: {},
+                               shadow: false, topLevel: true, x: 0, y: 0 };
+        const first = this.chain(body, false);
+        if (first) { this.blocks[defId].next = first; this.blocks[first].parent = defId; }
+        return { proccode, ids, warp };
     }
     // Create a stack of statements; returns the first id.
     chain(stmts, topLevel) {
@@ -119,4 +158,4 @@ class Project {
     }
 }
 
-module.exports = { L, N, V, B, S, BC, BCX, lf, bf, stack, Project };
+module.exports = { L, N, V, B, S, BC, BCX, lf, bf, stack, Project, ARG, ARGB, CALL, CLONE, MENU };

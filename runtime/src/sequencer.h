@@ -3,6 +3,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "lithium/project.h"
@@ -25,6 +26,7 @@ public:
     // Run one thread until it yields or finishes.
     void stepThread(Thread& thread);
     void stepToBranch(Thread& thread, int branchNum, bool isLoop);
+    void stepToProcedure(Thread& thread, const std::string& proccode);
     void retireThread(Thread& thread);
 
     // The thread currently being stepped, or nullptr.

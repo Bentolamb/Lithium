@@ -152,6 +152,33 @@ void Sequencer::stepToBranch(Thread& thread, int branchNum, bool isLoop) {
     thread.pushStack(branchId);
 }
 
+void Sequencer::stepToProcedure(Thread& thread, const std::string& proccode) {
+    const BlockContainer& blocks = thread.target->blocks;
+    const BlockIndex definition = blocks.procedureDefinition(proccode);
+    if (definition == kNoBlock) return;
+    // Check if the call is recursive, before the definition is pushed.
+    const bool isRecursive = thread.isRecursiveCall(proccode);
+    thread.pushStack(definition);
+    // In known warp-mode threads, only yield when time is up.
+    if (thread.peekStackFrame()->warpMode && warpElapsed(thread) > kWarpTimeMs) {
+        thread.status = Thread::Status::Yield;
+        return;
+    }
+    // Look for the warp flag on the definition's prototype.
+    bool doWarp = false;
+    const Input* custom = blocks.at(definition).findInput("custom_block");
+    if (custom != nullptr && custom->kind == Input::Kind::Block && blocks.valid(custom->block)) {
+        const Block& inner = blocks.at(custom->block);
+        if (inner.mutation) doWarp = inner.mutation->warp;
+    }
+    if (doWarp) {
+        thread.peekStackFrame()->warpMode = true;
+    } else if (isRecursive) {
+        // In normal-mode threads, yield any time we have a recursive call.
+        thread.status = Thread::Status::Yield;
+    }
+}
+
 void Sequencer::retireThread(Thread& thread) {
     thread.stack.clear();
     thread.frames.clear();

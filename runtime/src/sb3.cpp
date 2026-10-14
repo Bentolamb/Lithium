@@ -65,6 +65,7 @@ public:
                     loadInput(idx, in.key(), in.value());
                 }
             }
+            if (b.contains("mutation") && b["mutation"].is_object()) loadMutation(idx, b["mutation"]);
             if (b.contains("fields") && b["fields"].is_object()) {
                 for (auto f = b["fields"].begin(); f != b["fields"].end(); ++f) {
                     loadField(idx, f.key(), f.value());
@@ -132,6 +133,37 @@ private:
         } else {
             referenceToInput(owner, name, first, isBranch);
         }
+    }
+
+    // JSON array stored as a string (SB3 quirk), or as a real array.
+    static Json parseJsonArray(const Json& j) {
+        if (j.is_array()) return j;
+        if (j.is_string()) {
+            Json parsed = Json::parse(j.get<std::string>(), nullptr, false);
+            if (parsed.is_array()) return parsed;
+        }
+        return Json::array();
+    }
+
+    void loadMutation(BlockIndex owner, const Json& m) {
+        if (!m.contains("proccode") || !m["proccode"].is_string()) return;
+        Mutation mut;
+        mut.proccode = m["proccode"].get<std::string>();
+        if (m.contains("argumentids")) {
+            for (const Json& s : parseJsonArray(m["argumentids"])) mut.argumentIds.push_back(s.is_string() ? s.get<std::string>() : "");
+        }
+        if (m.contains("argumentnames")) {
+            for (const Json& s : parseJsonArray(m["argumentnames"])) mut.argumentNames.push_back(s.is_string() ? s.get<std::string>() : "");
+        }
+        if (m.contains("argumentdefaults")) {
+            for (const Json& s : parseJsonArray(m["argumentdefaults"])) mut.argumentDefaults.push_back(valueFromJson(s));
+        }
+        if (m.contains("warp")) {
+            const Json& w = m["warp"];
+            if (w.is_boolean()) mut.warp = w.get<bool>();
+            else if (w.is_string()) mut.warp = w.get<std::string>() == "true";
+        }
+        target_.blocks.setMutation(owner, std::move(mut));
     }
 
     void loadField(BlockIndex owner, const std::string& name, const Json& f) {

@@ -32,6 +32,8 @@ std::string Runtime::version() { return "0.0.2"; }
 void Runtime::loadProject(Project project) {
     stopAll();
     project_ = std::move(project);
+    cloneCounter_ = 0;
+    graveyard_.clear();
     redrawRequested_ = false;
 }
 
@@ -53,6 +55,12 @@ void Runtime::stopAll() {
     // If a thread is mid-step, retire it. The list is replaced rather than
     // cleared: a step in progress keeps going over the old list, as in
     // scratch-vm.
+    // Dispose all clones.
+    std::vector<Target*> clones;
+    for (const auto& t : project_.targets()) {
+        if (!t->isOriginal) clones.push_back(t.get());
+    }
+    for (Target* clone : clones) disposeClone(*clone);
     if (sequencer_->activeThread != nullptr) stopThread(*sequencer_->activeThread);
     threads_ = std::make_shared<ThreadList>();
 }
@@ -75,6 +83,7 @@ void Runtime::step() {
     threads_->erase(std::remove_if(threads_->begin(), threads_->end(),
                                    [](const std::shared_ptr<Thread>& t) { return t->isKilled; }),
                     threads_->end());
+    graveyard_.clear();
     // (Edge-activated hats are evaluated here once they exist.)
     redrawRequested_ = false;
     sequencer_->stepThreads();
@@ -99,15 +108,17 @@ bool Runtime::isWaitingThread(const Thread& thread) {
            !isActiveThread(thread);
 }
 
-std::vector<std::shared_ptr<Thread>> Runtime::startHats(std::string_view opcode, const HatField* matchField) {
+std::vector<std::shared_ptr<Thread>> Runtime::startHats(std::string_view opcode, const HatField* matchField,
+                                                           Target* onlyTarget) {
     std::vector<std::shared_ptr<Thread>> started;
     const Primitive* hat = lookupPrimitive(opcode);
     if (hat == nullptr || hat->kind != Primitive::Kind::Hat) return started;
     const std::string wanted = matchField ? jsToUpperCase(matchField->second) : std::string();
     const auto& targets = project_.targets();
     // Top layer first, like scratch-vm's allScriptsByOpcodeDo.
-    for (std::size_t t = targets.size(); t-- > 0;) {
-        Target* target = targets[t].get();
+    const std::size_t count = onlyTarget != nullptr ? 1 : targets.size();
+    for (std::size_t t = count; t-- > 0;) {
+        Target* target = onlyTarget != nullptr ? onlyTarget : targets[t].get();
         // Scripts may be added while hats run; iterate a snapshot.
         const std::vector<BlockIndex> scripts = target->blocks.scripts();
         for (const BlockIndex script : scripts) {
@@ -148,6 +159,25 @@ std::vector<std::shared_ptr<Thread>> Runtime::startHats(std::string_view opcode,
         }
     }
     return started;
+}
+
+Target* Runtime::createClone(Target& original) {
+    if (!clonesAvailable() || original.isStage) return nullptr;
+    cloneCounter_++;
+    auto clone = std::make_unique<Target>(original);
+    clone->cloneSerial = nextCloneSerial_++;
+    // Clone hats start before the clone joins the target list, as in scratch-vm.
+    Target* raw = clone.get();
+    startHats("control_start_as_clone", nullptr, raw);
+    project_.insertBefore(std::move(clone), &original);
+    return raw;
+}
+
+void Runtime::disposeClone(Target& clone) {
+    cloneCounter_--;
+    stopForTarget(&clone, nullptr);
+    std::unique_ptr<Target> owned = project_.remove(&clone);
+    if (owned) graveyard_.push_back(std::move(owned));
 }
 
 std::optional<Value> Runtime::variableValue(std::string_view target, std::string_view variable) {

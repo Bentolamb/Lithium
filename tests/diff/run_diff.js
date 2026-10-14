@@ -43,10 +43,9 @@ function compare(ref, lit, tol) {
         return sameExact(a, b);
     };
     if (ref.targets.length !== lit.targets.length) diffs.push(`target count ${ref.targets.length} vs ${lit.targets.length}`);
-    const byName = new Map(lit.targets.map(t => [t.name, t]));
-    for (const rt of ref.targets) {
-        const lt = byName.get(rt.isStage ? 'Stage' : rt.name);
-        if (!lt) { diffs.push(`missing target ${rt.name}`); continue; }
+    for (let ti = 0; ti < Math.min(ref.targets.length, lit.targets.length); ti++) {
+        const rt = ref.targets[ti], lt = lit.targets[ti];
+        if ((rt.isStage ? 'Stage' : rt.name) !== lt.name || rt.isOriginal !== lt.isOriginal) { diffs.push(`target ${ti}: ref=${rt.name}${rt.isOriginal ? '' : '(clone)'} lithium=${lt.name}${lt.isOriginal ? '' : '(clone)'}`); continue; }
         if (!rt.isStage) for (const k of ['x', 'y', 'direction']) if (!same(rt[k], lt[k])) diffs.push(`${rt.name}.${k}: ref=${JSON.stringify(rt[k])} lithium=${JSON.stringify(lt[k])}`);
         const names = new Set([...Object.keys(rt.variables), ...Object.keys(lt.variables)]);
         for (const n of names) if (!same(rt.variables[n], lt.variables[n])) diffs.push(`${rt.name}.${n}: ref=${JSON.stringify(rt.variables[n])} lithium=${JSON.stringify(lt.variables[n])}`);
@@ -75,7 +74,7 @@ function compare(ref, lit, tol) {
         fs.writeFileSync(file, text);
         let ref, lit;
         try { ref = await run(text, c.frames); } catch (e) { console.log(`FAIL ${c.name}: reference run failed: ${e.message || JSON.stringify(e)}`); failed++; continue; }
-        const r = spawnSync(bin, [file, '--frames', String(c.frames), '--seed', '1'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+        const r = spawnSync(bin, [file, '--frames', String(c.frames), '--seed', '1', '--tick', '0.0005'], { encoding: 'utf8', maxBuffer: 1 << 28 });
         if (r.status !== 0) { console.log(`FAIL ${c.name}: lithium_run exited ${r.status}: ${r.stderr.trim().split('\n').slice(0, 3).join(' | ')}`); failed++; continue; }
         lit = JSON.parse(r.stdout);
         const diffs = compare(ref, lit, c.ulp || 0);

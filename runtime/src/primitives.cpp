@@ -98,6 +98,75 @@ void controlStop(PrimitiveContext& cx) {
     }
 }
 
+// ---------------------------------------------------------------- procedures
+
+void procedureCall(PrimitiveContext& cx) {
+    ExecutionContext& ec = cx.stackFrame();
+    if (ec.executed) return;
+    if (!cx.block.mutation) return;
+    const std::string& proccode = cx.block.mutation->proccode;
+    const Mutation* proto = cx.blocks.procedurePrototype(proccode);
+    // Could not find the procedure: no-op, like Scratch 2.
+    if (proto == nullptr) return;
+    // Evaluate the arguments first: they must see the caller's parameters.
+    std::unordered_map<std::string, Value> params;
+    for (std::size_t i = 0; i < proto->argumentIds.size(); i++) {
+        const std::string& id = proto->argumentIds[i];
+        const std::string name = i < proto->argumentNames.size() ? proto->argumentNames[i] : std::string();
+        const Input* in = cx.block.findInput(id);
+        Value v = (in != nullptr && in->kind != Input::Kind::None)
+                      ? cx.input(id)
+                      : (i < proto->argumentDefaults.size() ? proto->argumentDefaults[i] : Value::string(""));
+        params[name] = std::move(v);
+    }
+    // Initialize params for this frame even when there are none, so that
+    // getParam does not look at earlier frames.
+    if (!ec.params) ec.params.emplace();
+    for (auto& kv : params) (*ec.params)[kv.first] = std::move(kv.second);
+    ec.executed = true;
+    cx.startProcedure(proccode);
+}
+
+Value argumentReporter(PrimitiveContext& cx) {
+    const Field* f = cx.field("VALUE");
+    if (f == nullptr) return Value::number(0.0);
+    const Value* v = cx.thread.getParam(f->value.toString());
+    // When the parameter is not found in the most recent procedure call,
+    // the default is always 0.
+    return v == nullptr ? Value::number(0.0) : *v;
+}
+
+// -------------------------------------------------------------------- clones
+
+void controlCreateCloneOf(PrimitiveContext& cx) {
+    const std::string option = cx.input("CLONE_OPTION").toString();
+    Target* source = nullptr;
+    if (option == "_myself_") {
+        source = &cx.target();
+    } else {
+        for (const auto& t : cx.runtime.project().targets()) {
+            if (!t->isStage && t->isOriginal && t->name == option) {
+                source = t.get();
+                break;
+            }
+        }
+    }
+    if (source == nullptr) return;
+    cx.runtime.createClone(*source);
+}
+
+void controlDeleteThisClone(PrimitiveContext& cx) {
+    if (cx.target().isOriginal) return;
+    cx.runtime.disposeClone(cx.target());
+}
+
+Value controlCloneMenuEmpty(PrimitiveContext&) { return Value::string(""); }
+
+Value controlCloneMenu(PrimitiveContext& cx) {
+    const Field* f = cx.field("CLONE_OPTION");
+    return f == nullptr ? Value::string("") : f->value;
+}
+
 // ---------------------------------------------------------------------- data
 
 void dataSetVariableTo(PrimitiveContext& cx) {
@@ -528,6 +597,16 @@ const Primitive kPrimitives[] = {
     {"control_if", Kind::Command, &controlIf, nullptr, false},
     {"control_if_else", Kind::Command, &controlIfElse, nullptr, false},
     {"control_stop", Kind::Command, &controlStop, nullptr, false},
+    {"control_create_clone_of", Kind::Command, &controlCreateCloneOf, nullptr, false},
+    {"control_create_clone_of_menu", Kind::Reporter, nullptr, &controlCloneMenu, false},
+    {"control_delete_this_clone", Kind::Command, &controlDeleteThisClone, nullptr, false},
+    {"control_start_as_clone", Kind::Hat, nullptr, nullptr, false},
+
+    {"procedures_definition", Kind::Hat, nullptr, nullptr, false},
+    {"procedures_prototype", Kind::Reporter, nullptr, &controlCloneMenuEmpty, false},
+    {"procedures_call", Kind::Command, &procedureCall, nullptr, false},
+    {"argument_reporter_string_number", Kind::Reporter, nullptr, &argumentReporter, false},
+    {"argument_reporter_boolean", Kind::Reporter, nullptr, &argumentReporter, false},
 
     {"data_setvariableto", Kind::Command, &dataSetVariableTo, nullptr, false},
     {"data_changevariableby", Kind::Command, &dataChangeVariableBy, nullptr, false},
@@ -603,6 +682,10 @@ bool PrimitiveContext::stackTimerFinished() const {
     const ExecutionContext& ec = stackFrame();
     const double elapsed = runtime.currentMSecs() - *ec.timerStart;
     return !(elapsed < ec.duration);
+}
+
+void PrimitiveContext::startProcedure(const std::string& proccode) const {
+    sequencer.stepToProcedure(thread, proccode);
 }
 
 void PrimitiveContext::startBranch(int branchNum, bool isLoop) const {

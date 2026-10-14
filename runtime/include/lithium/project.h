@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -42,6 +43,15 @@ struct Field {
     std::string id;  // e.g. the variable id for VARIABLE fields
 };
 
+// <mutation> of procedures_prototype / procedures_call blocks.
+struct Mutation {
+    std::string proccode;
+    std::vector<std::string> argumentIds;
+    std::vector<std::string> argumentNames;
+    std::vector<Value> argumentDefaults;
+    bool warp = false;
+};
+
 struct Block {
     std::string id;
     std::string opcode;
@@ -50,6 +60,7 @@ struct Block {
     bool topLevel = false;
     std::vector<std::pair<std::string, Input>> inputs;
     std::vector<std::pair<std::string, Field>> fields;
+    std::optional<Mutation> mutation;
 
     // Runtime cache of the resolved primitive; not part of the project data.
     mutable const Primitive* primitive = nullptr;
@@ -79,6 +90,13 @@ public:
     void setBranch(BlockIndex block, std::string name, BlockIndex first);
     void setField(BlockIndex block, std::string name, Value value, std::string id = {});
     void setTopLevel(BlockIndex block, bool topLevel = true);
+    void setMutation(BlockIndex block, Mutation mutation);
+
+    // Custom blocks. The definition hat (procedures_definition) whose
+    // prototype has this proccode, and the first prototype with it. The first
+    // match in block order wins, as in scratch-vm. kNoBlock / nullptr if none.
+    BlockIndex procedureDefinition(const std::string& proccode) const;
+    const Mutation* procedurePrototype(const std::string& proccode) const;
 
     BlockIndex getNextBlock(BlockIndex block) const;
     // branchNum 1 -> SUBSTACK, 2 -> SUBSTACK2. kNoBlock when empty.
@@ -93,6 +111,8 @@ private:
     std::vector<Block> blocks_;
     std::vector<BlockIndex> scripts_;
     std::unordered_map<std::string, BlockIndex> byId_;
+    mutable std::unordered_map<std::string, BlockIndex> definitionCache_;
+    mutable std::unordered_map<std::string, BlockIndex> prototypeCache_;
 };
 
 struct Variable {
@@ -106,17 +126,27 @@ struct Variable {
 
 class Target {
 public:
-    Target(std::string name, bool isStage) : name(std::move(name)), isStage(isStage) {}
+    Target(std::string name, bool isStage)
+        : name(std::move(name)), isStage(isStage), blocksStore_(std::make_shared<BlockContainer>()), blocks(*blocksStore_) {}
+    // Clone constructor: shares the block graph of the original.
+    explicit Target(const Target& original)
+        : name(original.name), isStage(false), isOriginal(false), x(original.x), y(original.y),
+          direction(original.direction), size(original.size), visible(original.visible),
+          blocksStore_(original.blocksStore_), blocks(*blocksStore_), variables(original.variables),
+          stage_(original.stage_) {}
+    Target& operator=(const Target&) = delete;
 
     std::string name;
     bool isStage;
-    bool isOriginal = true;  // false for clones (not implemented yet)
+    bool isOriginal = true;  // false for clones
+    std::uint64_t cloneSerial = 0;  // creation order of clones
     double x = 0.0;
     double y = 0.0;
     double direction = 90.0;
     double size = 100.0;
     bool visible = true;
-    BlockContainer blocks;
+    std::shared_ptr<BlockContainer> blocksStore_;
+    BlockContainer& blocks;
     std::deque<Variable> variables;  // deque: references stay valid on growth
 
     Variable& addVariable(std::string id, std::string name, Value initial);
@@ -135,6 +165,7 @@ public:
     Variable* lookupBroadcastMsg(std::string_view id, std::string_view name);
 
     void setStage(Target* stage) { stage_ = stage; }
+    Target* stage() const { return stage_; }
 
 private:
     Target* stage_ = nullptr;
@@ -150,6 +181,10 @@ public:
     // Sprites are added on top of earlier ones (higher layer).
     Target& addSprite(std::string name);
     Target* findTarget(std::string_view name);
+    // Clone support: place `clone` just before `behind` in execution order
+    // (Target.goBehindOther); remove a target and hand ownership back.
+    Target& insertBefore(std::unique_ptr<Target> clone, const Target* behind);
+    std::unique_ptr<Target> remove(const Target* target);
 
     // Executable order: stage first, then sprites from bottom layer to top.
     const std::vector<std::unique_ptr<Target>>& targets() const { return targets_; }

@@ -2,7 +2,7 @@
 // frames in scratch-vm and in Lithium; every variable, position and direction
 // must match.
 'use strict';
-const { Project, L, N, V, B, S, BC, BCX, lf, bf, stack } = require('./sb3gen.js');
+const { Project, L, N, V, B, S, BC, BCX, lf, bf, stack, ARG, ARGB, CALL, CLONE } = require('./sb3gen.js');
 
 const NUMS = ['', ' ', '0', '-0', '1', '-1', '2', '0.5', '-1.5', '10', '9', '100', '1e3', '1e21', '-1e21', '0x10', '0b11', '0o7',
               ' 12 ', '12abc', 'abc', '.5', '5.', '+5', 'Infinity', '-Infinity', 'NaN', 'true', '1e308', '1e-7', '123456789012345680000',
@@ -331,5 +331,189 @@ function* moreCases() {
     }
 }
 
-function* allCases() { yield* cases(); yield* moreCases(); }
+
+// ---- custom blocks and clones ------------------------------------------------
+function* procCases() {
+    const logTo = (t, tag) => S('data_setvariableto', { VALUE: B('operator_join', { STRING1: V('log'), STRING2: tag }) }, { VARIABLE: ['log', t.varId('log')] });
+    const num = name => ({ name }), bool = name => ({ name, bool: true });
+    {
+        const p = new Project();
+        const s = p.sprite('S1');
+        for (const v of ['r', 'out', 'log', 'x1']) s.defineVar(v, '');
+        const add = s.defineProc('add %s %s', [num('a'), num('b')], false, s.set('r', B('operator_add', { NUM1: ARG('a'), NUM2: ARG('b') })));
+        const flagp = s.defineProc('flag %b', [bool('f')], false,
+            S('control_if_else', { CONDITION: ARGB('f'), SUBSTACK: stack(logTo(s, L('T'))), SUBSTACK2: stack(logTo(s, L('F'))) }));
+        const inner = s.defineProc('inner %s', [num('y')], false, logTo(s, B('operator_join', { STRING1: L('[x='), STRING2: ARG('x') })), logTo(s, B('operator_join', { STRING1: L(' y='), STRING2: ARG('y') })));
+        const outer = s.defineProc('outer %s', [num('x')], false, logTo(s, B('operator_join', { STRING1: L('{'), STRING2: ARG('x') })),
+            CALL(inner, B('operator_add', { NUM1: ARG('x'), NUM2: N('1') })), logTo(s, B('operator_join', { STRING1: L('}'), STRING2: ARG('x') })));
+        s.flag(CALL(add, N('2'), N('3')), s.set('x1', V('r')),
+               CALL(add, L('1.5'), V('x1')), CALL(add, L('abc')),
+               CALL(flagp, B('operator_gt', { OPERAND1: N('3'), OPERAND2: N('2') })), CALL(flagp), CALL(flagp, B('operator_lt', { OPERAND1: N('3'), OPERAND2: N('2') })),
+               CALL(outer, N('10')), CALL(outer, L('hello')),
+               s.set('out', ARG('a')));
+        yield { name: 'proc_basic', project: p, frames: 3 };
+    }
+    for (const frames of [2, 6, 40]) {
+        const p = new Project();
+        const s = p.sprite('S1');
+        for (const v of ['r', 'log', 'n']) s.defineVar(v, 0);
+        const fact = {};
+        const f = s.defineProc('fact %s', [num('n')], false,
+            S('control_if_else', { CONDITION: B('operator_lt', { OPERAND1: ARG('n'), OPERAND2: N('2') }),
+                SUBSTACK: stack(s.set('r', N('1'))),
+                SUBSTACK2: stack(CALL({ proccode: 'fact %s', ids: ['arg_S1_n'] }, B('operator_subtract', { NUM1: ARG('n'), NUM2: N('1') })), s.set('r', B('operator_multiply', { NUM1: V('r'), NUM2: ARG('n') }))) }),
+            s.change('n', N('1')));
+        s.flag(CALL(f, N('9')), logTo(s, L('done')));
+        yield { name: 'proc_recursion_' + frames, project: p, frames };
+    }
+    for (const frames of [1, 2, 4]) {
+        const p = new Project();
+        const s = p.sprite('S1');
+        for (const v of ['a', 'b', 'log']) s.defineVar(v, 0);
+        const warp = s.defineProc('warp', [], true, S('control_repeat', { TIMES: N('30'), SUBSTACK: stack(s.change('a', N('1'))) }));
+        const nowarp = s.defineProc('nowarp', [], false, S('control_repeat', { TIMES: N('30'), SUBSTACK: stack(s.change('b', N('1'))) }));
+        s.flag(CALL(warp), logTo(s, L('W')), CALL(nowarp), logTo(s, L('N')));
+        yield { name: 'proc_warp_' + frames, project: p, frames };
+    }
+    {
+        const p = new Project();
+        const s = p.sprite('S1');
+        for (const v of ['n', 'log']) s.defineVar(v, 0);
+        const stopper = s.defineProc('stopper %s', [num('k')], false, logTo(s, L('a')),
+            S('control_if', { CONDITION: B('operator_gt', { OPERAND1: ARG('k'), OPERAND2: N('1') }), SUBSTACK: stack(S('control_stop', {}, { STOP_OPTION: ['this script', null] })) }),
+            logTo(s, L('b')),
+            S('control_repeat', { TIMES: N('3'), SUBSTACK: stack(S('control_if', { CONDITION: B('operator_equals', { OPERAND1: ARG('k'), OPERAND2: N('1') }), SUBSTACK: stack(S('control_stop', {}, { STOP_OPTION: ['this script', null] })) }), logTo(s, L('c'))) }),
+            logTo(s, L('d')));
+        s.flag(CALL(stopper, N('0')), logTo(s, L('|')), CALL(stopper, N('1')), logTo(s, L('|')), CALL(stopper, N('2')), logTo(s, L('|end')));
+        yield { name: 'proc_stop_this_script', project: p, frames: 6 };
+    }
+    {
+        // non-recursive chain deeper than the 5-call recursion window; then genuine recursion beyond it
+        const p = new Project();
+        const s = p.sprite('S1');
+        for (const v of ['n', 'depth', 'log']) s.defineVar(v, 0);
+        const procs = [];
+        let prev = null;
+        for (let i = 7; i >= 1; i--) {
+            const body = [s.change('n', N('1'))];
+            if (prev) body.push(CALL(prev));
+            body.push(s.change('n', N('10')));
+            prev = s.defineProc('level' + i, [], false, ...body);
+        }
+        s.flag(CALL(prev), logTo(s, L('x')));
+        yield { name: 'proc_deep_chain', project: p, frames: 3 };
+    }
+    {
+        // two scripts in different sprites calling looping procs: interleaving
+        const p = new Project();
+        const a = p.sprite('A'), b = p.sprite('B');
+        const st = p.stage;
+        st.defineVar('log', '');
+        for (const [t, tag] of [[a, 'a'], [b, 'b']]) {
+            const lp = t.defineProc('loop %s', [num('k')], false, S('control_repeat', { TIMES: ARG('k'), SUBSTACK: stack(S('data_setvariableto', { VALUE: B('operator_join', { STRING1: V('log'), STRING2: L(tag) }) }, { VARIABLE: ['log', st.varId('log')] })) }));
+            t.flag(CALL(lp, N('4')), S('data_setvariableto', { VALUE: B('operator_join', { STRING1: V('log'), STRING2: L(tag.toUpperCase()) }) }, { VARIABLE: ['log', st.varId('log')] }));
+        }
+        yield { name: 'proc_interleave', project: p, frames: 8 };
+    }
+    {
+        // duplicate definitions, undefined call
+        const p = new Project();
+        const s = p.sprite('S1');
+        s.defineVar('log', '');
+        const d1 = s.defineProc('dup', [], false, logTo(s, L('first')));
+        const d2 = s.defineProc('dup', [], false, logTo(s, L('second')));
+        s.flag(CALL(d1), CALL({ proccode: 'nope', ids: [] }), logTo(s, L('after')));
+        yield { name: 'proc_dup_undefined', project: p, frames: 3 };
+    }
+}
+
+function* cloneCases() {
+    const setG = (st, name, expr) => S('data_setvariableto', { VALUE: expr }, { VARIABLE: [name, st.varId(name)] });
+    const makeClone = who => S('control_create_clone_of', { CLONE_OPTION: CLONE(who) });
+    const me = () => makeClone('_myself_');
+    {
+        const p = new Project();
+        const st = p.stage; st.defineVar('count', 0); st.defineVar('log', '');
+        const a = p.sprite('A');
+        a.defineVar('depth', 0); a.defineVar('loc', 5);
+        a.flag(S('control_repeat', { TIMES: N('3'), SUBSTACK: stack(me(), setG(st, 'count', B('operator_add', { NUM1: V('count'), NUM2: N('1') }))) }),
+               setG(st, 'log', B('operator_join', { STRING1: V('log'), STRING2: L('F') })));
+        a.script(S('control_start_as_clone'), a.change('depth', N('1')), S('data_setvariableto', { VALUE: N('99') }, { VARIABLE: ['loc', a.varId('loc')] }),
+                 S('motion_changexby', { DX: N('7') }), setG(st, 'log', B('operator_join', { STRING1: V('log'), STRING2: L('c') })),
+                 S('control_repeat', { TIMES: N('2'), SUBSTACK: stack(S('motion_movesteps', { STEPS: N('3') })) }),
+                 S('control_delete_this_clone'), setG(st, 'log', B('operator_join', { STRING1: V('log'), STRING2: L('NEVER') })));
+        yield { name: 'clone_basic_delete', project: p, frames: 1 };
+        yield { name: 'clone_basic_delete_later', project: p, frames: 5 };
+    }
+    {
+        const p = new Project();
+        const st = p.stage; st.defineVar('log', ''); st.defineVar('n', 0);
+        const a = p.sprite('A'), b = p.sprite('B');
+        a.defineVar('id', 0); b.defineVar('id', 0);
+        a.flag(makeClone('B'), makeClone('Nope'), makeClone('A'), makeClone('_myself_'));
+        for (const t of [a, b]) {
+            t.script(S('control_start_as_clone'), t.change('id', N('1')), setG(st, 'n', B('operator_add', { NUM1: V('n'), NUM2: N('1') })),
+                     S('motion_gotoxy', { X: V('n'), Y: N('4') }));
+        }
+        yield { name: 'clone_other_sprite', project: p, frames: 3 };
+    }
+    {
+        // clone of clone, depth-limited chain; clones keep local values from the moment of cloning
+        const p = new Project();
+        const st = p.stage; st.defineVar('log', '');
+        const a = p.sprite('A');
+        a.defineVar('depth', 0);
+        a.flag(me());
+        a.script(S('control_start_as_clone'), a.change('depth', N('1')),
+                 setG(st, 'log', B('operator_join', { STRING1: V('log'), STRING2: V('depth') })),
+                 S('control_if', { CONDITION: B('operator_lt', { OPERAND1: V('depth'), OPERAND2: N('4') }), SUBSTACK: stack(me()) }),
+                 S('motion_changexby', { DX: V('depth') }));
+        yield { name: 'clone_chain', project: p, frames: 4 };
+    }
+    {
+        // limit: more than 300 clones; each clone loops forever so none disappear
+        const p = new Project();
+        const st = p.stage; st.defineVar('made', 0);
+        const a = p.sprite('A');
+        a.defineVar('k', 0);
+        a.flag(S('control_repeat', { TIMES: N('350'), SUBSTACK: stack(me(), setG(st, 'made', B('operator_add', { NUM1: V('made'), NUM2: N('1') }))) }));
+        a.script(S('control_start_as_clone'), S('control_wait_until', { CONDITION: B('operator_equals', { OPERAND1: N('1'), OPERAND2: N('2') }) }), a.change('k', N('1')));
+        yield { name: 'clone_limit', project: p, frames: 5 };
+    }
+    {
+        // broadcasts reach clones; stop all disposes them
+        const p = new Project();
+        const st = p.stage; st.defineVar('log', ''); st.defineBroadcast('go'); st.defineBroadcast('halt');
+        const a = p.sprite('A');
+        a.defineVar('hits', 0);
+        a.flag(me(), me(), S('control_repeat', { TIMES: N('2'), SUBSTACK: stack(setG(st, 'log', B('operator_join', { STRING1: V('log'), STRING2: L('.') }))) }),
+               S('event_broadcastandwait', { BROADCAST_INPUT: BC('go') }), setG(st, 'log', B('operator_join', { STRING1: V('log'), STRING2: L('W') })));
+        a.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('go') }), a.change('hits', N('1')), S('control_repeat', { TIMES: N('2'), SUBSTACK: stack(a.change('hits', N('10'))) }));
+        a.script(S('control_start_as_clone'), S('control_wait_until', { CONDITION: B('operator_equals', { OPERAND1: N('1'), OPERAND2: N('2') }) }), S('motion_changexby', { DX: N('1') }));
+        yield { name: 'clone_broadcast', project: p, frames: 3 };
+        yield { name: 'clone_broadcast_late', project: p, frames: 8 };
+    }
+    {
+        const p = new Project();
+        const st = p.stage; st.defineVar('log', '');
+        const a = p.sprite('A');
+        a.flag(me(), me(), S('control_repeat', { TIMES: N('3'), SUBSTACK: stack(S('motion_changexby', { DX: N('1') })) }),
+               S('control_stop', {}, { STOP_OPTION: ['all', null] }), setG(st, 'log', L('NEVER')));
+        a.script(S('control_start_as_clone'), S('control_wait_until', { CONDITION: B('operator_equals', { OPERAND1: N('1'), OPERAND2: N('2') }) }), S('motion_changexby', { DX: N('2') }));
+        yield { name: 'clone_stop_all', project: p, frames: 3 };
+    }
+    {
+        // stop other scripts in a clone; delete from a non-clone is a no-op; clone deleting itself while others run
+        const p = new Project();
+        const st = p.stage; st.defineVar('log', '');
+        const a = p.sprite('A');
+        a.defineVar('v', 0);
+        a.flag(S('control_delete_this_clone'), me(), S('control_repeat', { TIMES: N('6'), SUBSTACK: stack(a.change('v', N('1'))) }));
+        a.script(S('control_start_as_clone'), S('control_stop', {}, { STOP_OPTION: ['other scripts in sprite', null] }), a.change('v', N('100')));
+        a.script(S('control_start_as_clone'), S('control_repeat', { TIMES: N('2'), SUBSTACK: stack(a.change('v', N('1000'))) }), S('control_delete_this_clone'));
+        yield { name: 'clone_stop_other_delete', project: p, frames: 6 };
+    }
+}
+
+function* allCases() { yield* cases(); yield* moreCases(); yield* procCases(); yield* cloneCases(); }
 module.exports = { cases: allCases };
