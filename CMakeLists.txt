@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(LITHIUM_RUNTIME_SOURCES
     runtime/src/value.cpp
+    runtime/src/text.cpp
     runtime/src/project.cpp
     runtime/src/thread.cpp
     runtime/src/sequencer.cpp
@@ -39,8 +40,14 @@ if(EMSCRIPTEN)
         -sMODULARIZE=1
         -sEXPORT_NAME=createLithium
         -sENVIRONMENT=web,node
-        "-sEXPORTED_FUNCTIONS=_lithium_runtime_create,_lithium_runtime_destroy,_lithium_version,_lithium_load_builtin,_lithium_load_sb3_json,_lithium_get_load_log,_lithium_dump_state,_lithium_set_renderer_attached,_lithium_set_turbo_mode,_lithium_set_compatibility_mode,_lithium_use_manual_clock,_lithium_advance_clock,_lithium_green_flag,_lithium_stop_all,_lithium_runtime_step,_lithium_runtime_frame_count,_lithium_thread_count,_lithium_get_variable_number,_lithium_get_variable_string,_lithium_get_position,_malloc,_free"
+        "-sEXPORTED_FUNCTIONS=_lithium_runtime_create,_lithium_runtime_destroy,_lithium_version,_lithium_load_builtin,_lithium_load_sb3_json,_lithium_get_load_log,_lithium_dump_state,_lithium_set_renderer_attached,_lithium_set_random_seed,_lithium_set_turbo_mode,_lithium_set_compatibility_mode,_lithium_use_manual_clock,_lithium_advance_clock,_lithium_green_flag,_lithium_stop_all,_lithium_runtime_step,_lithium_runtime_frame_count,_lithium_thread_count,_lithium_get_variable_number,_lithium_get_variable_string,_lithium_get_position,_malloc,_free"
         "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,getValue")
+endif()
+
+# Native command-line runner, used by the differential tests (tests/diff).
+if(NOT EMSCRIPTEN)
+    add_executable(lithium_run tools/lithium_run.cpp)
+    target_link_libraries(lithium_run PRIVATE lithium_runtime)
 endif()
 
 option(LITHIUM_BUILD_TESTS "Build runtime tests" ON)

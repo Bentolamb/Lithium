@@ -2,9 +2,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <string>
 #include <unordered_map>
 
 #include "lithium/runtime.h"
+#include "lithium/text.h"
 #include "sequencer.h"
 
 namespace lithium {
@@ -154,7 +160,98 @@ Value operatorNot(PrimitiveContext& cx) {
     return Value::boolean(!cx.input("OPERAND").toBoolean());
 }
 Value operatorJoin(PrimitiveContext& cx) {
-    return Value::string(cx.input("STRING1").toString() + cx.input("STRING2").toString());
+    return Value::string(concatJs(cx.input("STRING1").toString(), cx.input("STRING2").toString()));
+}
+
+
+std::string asciiLowerCopy(std::string s) {
+    for (char& c : s) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return s;
+}
+
+// Cast.isInt
+bool castIsInt(const Value& v) {
+    if (v.isBoolean()) return true;
+    if (v.isNumber()) {
+        const double d = v.toJsNumber();
+        if (std::isnan(d)) return true;
+        return std::isfinite(d) && std::fabs(d) < 1e21 && d == std::trunc(d);
+    }
+    return v.toString().find('.') == std::string::npos;
+}
+
+// parseFloat(x.toFixed(10)): JavaScript rounds to 10 decimals before parsing.
+double roundTo10(double x) {
+    if (!std::isfinite(x)) return x;
+    char buf[400];
+    std::snprintf(buf, sizeof buf, "%.10f", x);
+    return std::strtod(buf, nullptr);
+}
+
+Value operatorMod(PrimitiveContext& cx) {
+    const double n = cx.input("NUM1").toNumber();
+    const double modulus = cx.input("NUM2").toNumber();
+    double result = std::fmod(n, modulus);  // same as JavaScript's %
+    // Scratch mod uses floored division instead of truncated division.
+    if (result / modulus < 0) result += modulus;
+    return Value::number(result);
+}
+Value operatorRound(PrimitiveContext& cx) {
+    return Value::number(jsRound(cx.input("NUM").toNumber()));
+}
+Value operatorRandom(PrimitiveContext& cx) {
+    const Value from = cx.input("FROM");
+    const Value to = cx.input("TO");
+    const double nFrom = from.toNumber();
+    const double nTo = to.toNumber();
+    const double low = nFrom <= nTo ? nFrom : nTo;
+    const double high = nFrom <= nTo ? nTo : nFrom;
+    if (low == high) return Value::number(low);
+    // If both arguments are ints, truncate the result to an int.
+    if (castIsInt(from) && castIsInt(to)) {
+        return Value::number(low + std::floor(cx.runtime.random() * ((high + 1) - low)));
+    }
+    return Value::number(cx.runtime.random() * (high - low) + low);
+}
+Value operatorLetterOf(PrimitiveContext& cx) {
+    const double index = cx.input("LETTER").toNumber() - 1;
+    const std::u16string str = utf8ToUtf16(cx.input("STRING").toString());
+    if (index < 0 || index >= static_cast<double>(str.size())) return Value::string("");
+    return Value::string(utf16ToUtf8(std::u16string(1, str[static_cast<std::size_t>(index)])));
+}
+Value operatorLength(PrimitiveContext& cx) {
+    return Value::number(static_cast<double>(utf8ToUtf16(cx.input("STRING").toString()).size()));
+}
+Value operatorContains(PrimitiveContext& cx) {
+    const std::string a = jsToLowerCase(cx.input("STRING1").toString());
+    const std::string b = jsToLowerCase(cx.input("STRING2").toString());
+    return Value::boolean(a.find(b) != std::string::npos);
+}
+Value operatorMathop(PrimitiveContext& cx) {
+    const Field* f = cx.field("OPERATOR");
+    const std::string op = asciiLowerCopy(f ? f->value.toString() : std::string());
+    const double n = cx.input("NUM").toNumber();
+    constexpr double kPiLocal = 3.141592653589793238462643383279502884;
+    if (op == "abs") return Value::number(std::fabs(n));
+    if (op == "floor") return Value::number(std::floor(n));
+    if (op == "ceiling") return Value::number(std::ceil(n));
+    if (op == "sqrt") return Value::number(std::sqrt(n));
+    if (op == "sin") return Value::number(roundTo10(std::sin((kPiLocal * n) / 180)));
+    if (op == "cos") return Value::number(roundTo10(std::cos((kPiLocal * n) / 180)));
+    if (op == "tan") {
+        const double angle = std::fmod(n, 360.0);
+        if (angle == -270 || angle == 90) return Value::number(std::numeric_limits<double>::infinity());
+        if (angle == -90 || angle == 270) return Value::number(-std::numeric_limits<double>::infinity());
+        return Value::number(roundTo10(std::tan((kPiLocal * angle) / 180)));
+    }
+    if (op == "asin") return Value::number((std::asin(n) * 180) / kPiLocal);
+    if (op == "acos") return Value::number((std::acos(n) * 180) / kPiLocal);
+    if (op == "atan") return Value::number((std::atan(n) * 180) / kPiLocal);
+    if (op == "ln") return Value::number(std::log(n));
+    if (op == "log") return Value::number(std::log(n) / 2.302585092994046);  // Math.LN10
+    if (op == "e ^") return Value::number(std::exp(n));
+    if (op == "10 ^") return Value::number(std::pow(10.0, n));
+    return Value::number(0);
 }
 
 // -------------------------------------------------------------------- motion
@@ -179,6 +276,30 @@ double limitPrecision(double coordinate) {
     const double rounded = jsRound(coordinate);
     const double delta = coordinate - rounded;
     return std::fabs(delta) < 1e-9 ? rounded : coordinate;
+}
+
+
+// RenderedTarget.setDirection: keeps the direction in (-180, 180]. With a
+// renderer attached, a visible target requests a redraw.
+void setTargetDirection(PrimitiveContext& cx, double direction) {
+    Target& target = cx.target();
+    if (target.isStage) return;
+    if (!std::isfinite(direction)) return;
+    // MathUtil.wrapClamp(direction, -179, 180)
+    const double range = 180.0 - (-179.0) + 1.0;
+    target.direction = direction - (std::floor((direction - (-179.0)) / range) * range);
+    if (cx.runtime.rendererAttached() && target.visible) cx.runtime.requestRedraw();
+}
+void motionTurnRight(PrimitiveContext& cx) {
+    const double degrees = cx.input("DEGREES").toNumber();
+    setTargetDirection(cx, cx.target().direction + degrees);
+}
+void motionTurnLeft(PrimitiveContext& cx) {
+    const double degrees = cx.input("DEGREES").toNumber();
+    setTargetDirection(cx, cx.target().direction - degrees);
+}
+void motionPointInDirection(PrimitiveContext& cx) {
+    setTargetDirection(cx, cx.input("DIRECTION").toNumber());
 }
 
 void motionMoveSteps(PrimitiveContext& cx) {
@@ -244,6 +365,17 @@ const Primitive kPrimitives[] = {
     {"operator_not", Kind::Reporter, nullptr, &operatorNot, false},
     {"operator_join", Kind::Reporter, nullptr, &operatorJoin, false},
 
+    {"operator_random", Kind::Reporter, nullptr, &operatorRandom, false},
+    {"operator_letter_of", Kind::Reporter, nullptr, &operatorLetterOf, false},
+    {"operator_length", Kind::Reporter, nullptr, &operatorLength, false},
+    {"operator_contains", Kind::Reporter, nullptr, &operatorContains, false},
+    {"operator_mod", Kind::Reporter, nullptr, &operatorMod, false},
+    {"operator_round", Kind::Reporter, nullptr, &operatorRound, false},
+    {"operator_mathop", Kind::Reporter, nullptr, &operatorMathop, false},
+
+    {"motion_turnright", Kind::Command, &motionTurnRight, nullptr, false},
+    {"motion_turnleft", Kind::Command, &motionTurnLeft, nullptr, false},
+    {"motion_pointindirection", Kind::Command, &motionPointInDirection, nullptr, false},
     {"motion_movesteps", Kind::Command, &motionMoveSteps, nullptr, false},
     {"motion_gotoxy", Kind::Command, &motionGoToXY, nullptr, false},
     {"motion_changexby", Kind::Command, &motionChangeXBy, nullptr, false},

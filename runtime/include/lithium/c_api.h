@@ -28,6 +28,7 @@ const char* lithium_get_load_log(lithium_runtime* rt);
 
 /* Configuration. */
 void lithium_set_renderer_attached(lithium_runtime* rt, int32_t on);
+void lithium_set_random_seed(lithium_runtime* rt, uint32_t seed);
 void lithium_set_turbo_mode(lithium_runtime* rt, int32_t on);
 void lithium_set_compatibility_mode(lithium_runtime* rt, int32_t on);
 /* Replace the wall clock with a manual one starting at 0 ms. Every clock

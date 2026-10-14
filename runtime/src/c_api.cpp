@@ -54,6 +54,7 @@ const char* lithium_dump_state(lithium_runtime* rt) {
 }
 
 void lithium_set_renderer_attached(lithium_runtime* rt, int32_t on) { rt->impl.setRendererAttached(on != 0); }
+void lithium_set_random_seed(lithium_runtime* rt, uint32_t seed) { rt->impl.setRandomSeed(seed); }
 void lithium_set_turbo_mode(lithium_runtime* rt, int32_t on) { rt->impl.setTurboMode(on != 0); }
 void lithium_set_compatibility_mode(lithium_runtime* rt, int32_t on) { rt->impl.setCompatibilityMode(on != 0); }
 

@@ -1,4 +1,5 @@
 #include "lithium/value.h"
+#include "lithium/text.h"
 
 #include <charconv>
 #include <cmath>
@@ -230,9 +231,7 @@ double Value::compare(const Value& v1, const Value& v2) {
         n2 = nan;
     }
     if (std::isnan(n1) || std::isnan(n2)) {
-        const std::string s1 = asciiLower(v1.toString());
-        const std::string s2 = asciiLower(v2.toString());
-        const int c = s1.compare(s2);
+        const int c = compareUtf16(jsToLowerCase(v1.toString()), jsToLowerCase(v2.toString()));
         return c < 0 ? -1.0 : (c > 0 ? 1.0 : 0.0);
     }
     if ((n1 == inf && n2 == inf) || (n1 == -inf && n2 == -inf)) return 0.0;

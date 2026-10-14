@@ -4,8 +4,6 @@
 // this file mirror scratch-vm's util/cast.js (Cast.toNumber, Cast.toBoolean,
 // Cast.toString, Cast.compare), including JavaScript's own Number(string) and
 // String(number) behaviour, which Scratch inherits.
-//
-// Known gap: case-insensitive comparison only folds ASCII letters.
 #pragma once
 
 #include <string>

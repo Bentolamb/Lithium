@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -52,6 +53,8 @@ public:
     // Whether a renderer is attached. Motion blocks only request a redraw
     // (ending the frame's work early) when one is, exactly as in scratch-vm.
     void setRendererAttached(bool on) { rendererAttached_ = on; }
+    // Seeds the generator behind `pick random` (Math.random in scratch-vm).
+    void setRandomSeed(std::uint32_t seed) { rng_.seed(seed); }
     bool turboMode() const { return turboMode_; }
     bool rendererAttached() const { return rendererAttached_; }
 
@@ -75,6 +78,8 @@ public:
     double now() const { return clock_(); }
     void updateCurrentMSecs() { currentMSecs_ = clock_(); }
     void requestRedraw() { redrawRequested_ = true; }
+    // Uniform in [0, 1), like Math.random().
+    double random() { return std::uniform_real_distribution<double>(0.0, 1.0)(rng_); }
     Sequencer& sequencer() { return *sequencer_; }
     // The live thread list. stopAll() swaps in a new list; code that is
     // iterating keeps its own shared_ptr to the old one, like scratch-vm.
@@ -95,6 +100,7 @@ private:
     bool turboMode_ = false;
     bool rendererAttached_ = false;
     std::uint64_t frames_ = 0;
+    std::mt19937_64 rng_{std::random_device{}()};
 };
 
 }  // namespace lithium

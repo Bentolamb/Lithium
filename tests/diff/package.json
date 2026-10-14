@@ -1,0 +1,8 @@
+{
+  "name": "lithium-diff-tests",
+  "private": true,
+  "description": "Differential tests: run generated projects in scratch-vm (reference) and Lithium, compare the results.",
+  "devDependencies": {
+    "scratch-vm": "5.0.300"
+  }
+}
