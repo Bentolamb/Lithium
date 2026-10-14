@@ -169,17 +169,23 @@ Value controlCloneMenu(PrimitiveContext& cx) {
 
 // ---------------------------------------------------------------------- data
 
+// Variable of a VARIABLE field; the name string is only built when the id misses.
+Variable& fieldVariable(PrimitiveContext& cx, const Field& field) {
+    if (Variable* v = cx.target().lookupVariableById(field.id)) return *v;
+    return cx.target().lookupOrCreateVariable(field.id, field.value.toString());
+}
+
 void dataSetVariableTo(PrimitiveContext& cx) {
     const Field* field = cx.field("VARIABLE");
     if (field == nullptr) return;
-    Variable& variable = cx.target().lookupOrCreateVariable(field->id, field->value.toString());
+    Variable& variable = fieldVariable(cx, *field);
     variable.value = cx.input("VALUE");
 }
 
 void dataChangeVariableBy(PrimitiveContext& cx) {
     const Field* field = cx.field("VARIABLE");
     if (field == nullptr) return;
-    Variable& variable = cx.target().lookupOrCreateVariable(field->id, field->value.toString());
+    Variable& variable = fieldVariable(cx, *field);
     const double casted = variable.value.toNumber();
     const double delta = cx.inputNumber("VALUE");
     variable.value = Value::number(casted + delta);
@@ -188,7 +194,7 @@ void dataChangeVariableBy(PrimitiveContext& cx) {
 Value dataVariable(PrimitiveContext& cx) {
     const Field* field = cx.field("VARIABLE");
     if (field == nullptr) return Value::string("");
-    return cx.target().lookupOrCreateVariable(field->id, field->value.toString()).value;
+    return fieldVariable(cx, *field).value;
 }
 
 

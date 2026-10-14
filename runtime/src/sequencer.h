@@ -35,6 +35,14 @@ public:
 private:
     void executeBlock(Thread& thread);
     double warpElapsed(const Thread& thread) const;
+    // True when a looping thread may re-run immediately instead of returning to
+    // stepThreads: it is the only thread and nothing would stop the next pass.
+    bool canRepeatLoopNow(const Thread& thread);
+
+    double stepStart_ = 0.0;   // start of the current stepThreads, in ms
+    double stepBudget_ = 0.0;  // its work time, in ms
+    unsigned loopPasses_ = 0;
+    bool budgetLeft_ = true;
 
     Runtime& runtime_;
 };

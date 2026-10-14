@@ -35,6 +35,21 @@ struct ExecutionContext {
     const Variable* broadcastVar = nullptr;
     bool startedThreadsSet = false;
     std::vector<std::shared_ptr<Thread>> startedThreads;
+
+    // Same effect as `*this = ExecutionContext{}` without building a temporary.
+    void clear() {
+        loopCounter.reset();
+        timerStart.reset();
+        duration = 0.0;
+        glideTimerStart.reset();
+        glideDuration = 0.0;
+        glideStartX = glideStartY = glideEndX = glideEndY = 0.0;
+        executed = false;
+        if (params) params.reset();
+        broadcastVar = nullptr;
+        startedThreadsSet = false;
+        if (!startedThreads.empty()) startedThreads.clear();
+    }
 };
 
 struct StackFrame {
@@ -45,7 +60,7 @@ struct StackFrame {
     void reset() {
         isLoop = false;
         warpMode = false;
-        exec = ExecutionContext{};
+        exec.clear();
     }
     // Reuse the frame for the next block at the same level; warp mode is kept.
     void reuse() {

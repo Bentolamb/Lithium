@@ -14,6 +14,10 @@ std::vector<std::shared_ptr<Thread>> Sequencer::stepThreads() {
     // For Scratch 2 compatibility the millisecond clock is read once per step.
     runtime_.updateCurrentMSecs();
     const double timerStart = runtime_.now();
+    stepStart_ = timerStart;
+    stepBudget_ = workTime;
+    loopPasses_ = 0;
+    budgetLeft_ = true;
 
     std::size_t numActiveThreads = std::numeric_limits<std::size_t>::max();  // "Infinity"
     bool ranFirstTick = false;
@@ -82,6 +86,15 @@ std::vector<std::shared_ptr<Thread>> Sequencer::stepThreads() {
     return doneThreads;
 }
 
+bool Sequencer::canRepeatLoopNow(const Thread& thread) {
+    if (thread.status != Thread::Status::Running || thread.isKilled) return false;
+    const auto& threads = *runtime_.threads();
+    if (threads.size() != 1 || threads[0].get() != &thread) return false;
+    if (!runtime_.turboMode() && runtime_.redrawRequested()) return false;
+    if ((++loopPasses_ & 7u) == 0) budgetLeft_ = (runtime_.now() - stepStart_) < stepBudget_;
+    return budgetLeft_;
+}
+
 double Sequencer::warpElapsed(const Thread& thread) const {
     return thread.warpTimerStart ? runtime_.now() - *thread.warpTimerStart : 0.0;
 }
@@ -139,7 +152,10 @@ void Sequencer::stepThread(Thread& thread) {
                 // The current level is a loop: yield for the frame, unless in
                 // warp mode where only a spent warp timer yields. Do not move
                 // to the next block, since loops are re-executed.
-                if (!isWarpMode || warpElapsed(thread) > kWarpTimeMs) return;
+                if (!isWarpMode || warpElapsed(thread) > kWarpTimeMs) {
+                    if (canRepeatLoopNow(thread)) continue;
+                    return;
+                }
                 continue;
             }
             // Get the next block of the existing block on the stack.

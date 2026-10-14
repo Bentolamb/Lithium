@@ -149,8 +149,8 @@ BlockIndex BlockContainer::getNextBlock(BlockIndex block) const {
 
 BlockIndex BlockContainer::getBranch(BlockIndex block, int branchNum) const {
     if (!valid(block)) return kNoBlock;
-    const std::string name = branchNum > 1 ? "SUBSTACK" + std::to_string(branchNum) : "SUBSTACK";
-    const Input* input = at(block).findInput(name);
+    const Input* input = branchNum > 2 ? at(block).findInput("SUBSTACK" + std::to_string(branchNum))
+                         : at(block).findInput(branchNum == 2 ? std::string_view("SUBSTACK2") : std::string_view("SUBSTACK"));
     if (input == nullptr || input->kind != Input::Kind::Block) return kNoBlock;
     return input->block;
 }
