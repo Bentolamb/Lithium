@@ -1,0 +1,32 @@
+{
+  "name": "lithium",
+  "productName": "Lithium",
+  "version": "0.1.0-beta.1",
+  "description": "Fast, open-source, Scratch-compatible editor with a C++ runtime",
+  "main": "main.js",
+  "license": "AGPL-3.0-only",
+  "author": "Lithium contributors",
+  "scripts": { "start": "electron .", "dist": "electron-builder --win nsis --x64" },
+  "devDependencies": { "electron": "^33.2.0", "electron-builder": "^25.1.8" },
+  "build": {
+    "appId": "app.lithium.editor",
+    "productName": "Lithium",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "package.json"],
+    "extraResources": [{ "from": "gui", "to": "gui" }],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "icon.ico", "signAndEditExecutable": false },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Lithium",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "license": "LICENSE.txt",
+      "artifactName": "Lithium-Setup-${version}.exe"
+    },
+    "fileAssociations": [{ "ext": "sb3", "name": "Scratch 3 project", "description": "Scratch 3 project", "role": "Editor" }]
+  }
+}
