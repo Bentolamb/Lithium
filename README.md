@@ -4,7 +4,7 @@ A standalone Scratch-compatible visual programming environment with a C++ runtim
 License: AGPL-3.0 (see `LICENSE`).
 
 ## Status
-Milestone 3: SB3 loading on top of the M2 runtime (values, scheduler, first block set), tested natively and in WASM.
+Milestone 4: minimal browser shell (open/run an `.sb3`, stage view, variables) on top of the M2/M3 runtime.
 
 | Piece | State |
 |---|---|
@@ -13,6 +13,7 @@ Milestone 3: SB3 loading on top of the M2 runtime (values, scheduler, first bloc
 | Blocks (`primitives.cpp`) | green flag; repeat, forever, if, if/else, repeat until, while, wait, wait until, stop; set/change variable; arithmetic, comparison, and/or/not, join; move steps, x/y set/change, go to x y, x/y/direction reporters |
 | SB3 loader (`sb3.cpp`) | reads `project.json`: targets, layers, variables, block graph, inputs (shadows, obscured shadows, inline variable reporters), fields. Unknown opcodes load with a warning and run as no-ops |
 | `tools/run_sb3.js` | Node runner: unzips an `.sb3`, runs it in the WASM runtime, prints final variables and positions |
+| Web shell (`web/`) | open or drop an `.sb3`, Go/Stop, turbo, 30 fps mode, stage canvas (sprites as markers), live variables and sprite table, load log. A runner, not an editor yet: no block editing, costumes or sounds |
 | C API | create/step/green flag/stop, built-in demo projects, variable and position readback, manual clock |
 | Native tests (Catch2) | passing |
 | WASM build (Emscripten 6.0.12) | working on Windows 11 |
@@ -46,6 +47,15 @@ node tests/wasm_smoke.js build-wasm/lithium_wasm.js   # runs the C API against b
 Note: a `uint64_t` return crosses the WASM boundary as a BigInt, so the C API
 uses 32-bit ints and doubles.
 
+## Web shell
+After building WASM (`build-wasm/`), from the repo root:
+```
+node tools/serve.js
+```
+then open http://localhost:8080/web/ . `Enter` = Go, `Esc` = Stop.
+`node tests/web/ui_test.js` drives the page in headless Chromium (needs `playwright-core`);
+it uses a mock WASM module by default and `--real` to test against `build-wasm/`.
+
 ## Run an .sb3
 ```
 node tools/run_sb3.js tests/projects/count.sb3 --wasm build-wasm/lithium_wasm.js
@@ -57,7 +67,7 @@ Options: `--seconds N` (default 5), `--frames N`, `--renderer`, `--turbo`, `--co
 ## Layout
 - `runtime/`: the C++ runtime (no platform dependencies).
 - `tests/`: runtime tests; `tests/projects/`: SB3 fixtures.
-- `tools/`: dev tools (Node SB3 runner).
+- `web/`: browser shell. `tools/`: Node SB3 runner and static server.
 - `third_party/`: vendored nlohmann/json (MIT).
 - `docs/`: design notes.
 
