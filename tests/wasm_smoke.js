@@ -1,6 +1,7 @@
 // WASM test: load the runtime in Node and run built-in projects through the C API.
 // Usage: node tests/wasm_smoke.js <path to lithium_wasm.js>
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 
 const createLithium = require(path.resolve(process.argv[2] || 'build-wasm/lithium_wasm.js'));
@@ -72,6 +73,31 @@ createLithium().then(m => {
     assert.ok(Number(varStr(rt, 'Stage', 'count')) > 1);
     stopAll(rt);
     assert.strictEqual(threads(rt), 0);
+
+    // SB3 loading: the fixtures from TurboWarp.
+    const loadSb3 = m.cwrap('lithium_load_sb3_json', 'number', ['number', 'string']);
+    const loadLog = m.cwrap('lithium_get_load_log', 'string', ['number']);
+    const dump = m.cwrap('lithium_dump_state', 'string', ['number']);
+    const fixture = n => fs.readFileSync(path.join(__dirname, 'projects', n + '.json'), 'utf8');
+    assert.strictEqual(loadSb3(rt, 'garbage'), 0);
+    assert.ok(loadLog(rt).startsWith('error:'));
+    useClock(rt, 0);
+    setRenderer(rt, 0);
+    assert.strictEqual(loadSb3(rt, fixture('count')), 1);
+    greenFlag(rt);
+    step(rt);
+    assert.strictEqual(varStr(rt, 'Stage', 'count'), '1000');
+    assert.strictEqual(loadSb3(rt, fixture('mathmix')), 1);
+    greenFlag(rt);
+    step(rt);
+    assert.strictEqual(varStr(rt, 'Stage', 'a'), '7.299999999999999');
+    assert.strictEqual(varStr(rt, 'Stage', 's'), '7.299999999999999abc');
+    assert.strictEqual(loadSb3(rt, fixture('slide')), 1);
+    greenFlag(rt);
+    step(rt);
+    const state = JSON.parse(dump(rt));
+    assert.strictEqual(state.targets[1].x, 110);
+    assert.strictEqual(state.targets[1].y, -50);
 
     destroy(rt);
     console.log('wasm test: PASS (version ' + version() + ')');

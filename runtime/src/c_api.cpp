@@ -3,6 +3,8 @@
 #include <string>
 
 #include "lithium/builtin_projects.h"
+#include "lithium/inspect.h"
+#include "lithium/sb3.h"
 #include "lithium/runtime.h"
 
 struct lithium_runtime {
@@ -10,6 +12,8 @@ struct lithium_runtime {
     double manualNow = 0.0;
     double autoAdvance = 0.0;
     std::string stringBuffer;
+    std::string loadLog;
+    std::string stateBuffer;
 };
 
 extern "C" {
@@ -28,6 +32,25 @@ int32_t lithium_load_builtin(lithium_runtime* rt, const char* name) {
     if (!project) return 0;
     rt->impl.loadProject(std::move(*project));
     return 1;
+}
+
+int32_t lithium_load_sb3_json(lithium_runtime* rt, const char* project_json) {
+    auto result = lithium::loadSb3Json(project_json ? project_json : "");
+    rt->loadLog.clear();
+    if (!result.project) {
+        rt->loadLog = "error: " + result.error + "\n";
+        return 0;
+    }
+    for (const auto& w : result.warnings) rt->loadLog += "warning: " + w + "\n";
+    rt->impl.loadProject(std::move(*result.project));
+    return 1;
+}
+
+const char* lithium_get_load_log(lithium_runtime* rt) { return rt->loadLog.c_str(); }
+
+const char* lithium_dump_state(lithium_runtime* rt) {
+    rt->stateBuffer = lithium::dumpState(rt->impl);
+    return rt->stateBuffer.c_str();
 }
 
 void lithium_set_renderer_attached(lithium_runtime* rt, int32_t on) { rt->impl.setRendererAttached(on != 0); }
