@@ -17,7 +17,7 @@ cd scratch-gui
 mkdir -p src/lib/lithium static/lithium
 cp "$here"/web/{lithium.js,stage.js,gui_bridge.js} src/lib/lithium/
 cp "$here"/web/logo.svg static/lithium/logo.svg
-cp "$here"/web/logo.svg src/components/menu-bar/lithium_logo.svg
+cp "$here"/web/logo.png src/components/menu-bar/lithium_logo.png
 cp "$here"/build-wasm/lithium_wasm.{js,wasm} static/lithium/
 NODE_ENV=production NODE_OPTIONS=--max-old-space-size=6000 npx webpack --bail
 echo "GUI built: $PWD/build/editor.html"
