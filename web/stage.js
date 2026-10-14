@@ -8,11 +8,12 @@ const GROUPS = ['background', 'video', 'pen', 'sprite'];
 const EFFECTS_NATIVE = { w: 480, h: 360 };
 
 export class StageHost {
-    constructor(canvas, lith) {
+    // `renderer` is optional: the TurboWarp GUI passes the VM's own renderer.
+    constructor(canvas, lith, renderer) {
         this.lith = lith;
         this.canvas = canvas;
-        this.r = new window.ScratchRender(canvas);
-        this.r.setLayerGroupOrdering(GROUPS);
+        this.r = renderer || new window.ScratchRender(canvas);
+        if (!renderer) this.r.setLayerGroupOrdering(GROUPS);
         this.groupOf = new Map();       // drawable id -> layer group name
         this.penSkin = -1;
         this.bubbles = new Map();       // target uid -> {drawableId, skinId, type, text, onSpriteRight, targetDrawable}

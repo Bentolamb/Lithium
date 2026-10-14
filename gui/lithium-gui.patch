@@ -1,0 +1,103 @@
+diff --git a/src/components/menu-bar/menu-bar.jsx b/src/components/menu-bar/menu-bar.jsx
+index 6caddb5..39f3260 100644
+--- a/src/components/menu-bar/menu-bar.jsx
++++ b/src/components/menu-bar/menu-bar.jsx
+@@ -99,6 +99,7 @@ import advancedIcon from './tw-advanced.svg';
+ 
+ import ninetiesLogo from './nineties_logo.svg';
+ import catLogo from './cat_logo.svg';
++import lithiumLogo from './lithium_logo.svg';
+ import prehistoricLogo from './prehistoric-logo.svg';
+ import oldtimeyLogo from './oldtimey-logo.svg';
+ 
+@@ -491,6 +492,14 @@ class MenuBar extends React.Component {
+                 )}
+             >
+                 <div className={styles.mainMenu}>
++                    <div className={styles.menuBarItem}>
++                        <img
++                            alt="Lithium"
++                            draggable={false}
++                            src={lithiumLogo}
++                            style={{height: '2rem', display: 'block'}}
++                        />
++                    </div>
+                     <div className={styles.fileGroup}>
+                         {this.props.errors.length > 0 && <div>
+                             <MenuLabel
+@@ -516,14 +525,14 @@ class MenuBar extends React.Component {
+                                     place={this.props.isRtl ? 'left' : 'right'}
+                                 >
+                                     <MenuSection>
+-                                        <MenuItemLink href="https://scratch.mit.edu/users/GarboMuffin/#comments">
++                                        <MenuItemLink href="https://github.com/">
+                                             <FormattedMessage
+                                                 defaultMessage="Some scripts encountered errors."
+                                                 description="Link in error menu"
+                                                 id="tw.menuBar.reportError1"
+                                             />
+                                         </MenuItemLink>
+-                                        <MenuItemLink href="https://scratch.mit.edu/users/GarboMuffin/#comments">
++                                        <MenuItemLink href="https://github.com/">
+                                             <FormattedMessage
+                                                 defaultMessage="This is a bug. Please report it."
+                                                 description="Link in error menu"
+@@ -1011,27 +1020,6 @@ class MenuBar extends React.Component {
+                             />
+                         ) : []))}
+                     </div>
+-                    {/* tw: add a feedback button */}
+-                    <div className={styles.menuBarItem}>
+-                        <a
+-                            className={styles.feedbackLink}
+-                            href="https://scratch.mit.edu/users/GarboMuffin/#comments"
+-                            rel="noopener noreferrer"
+-                            target="_blank"
+-                        >
+-                            {/* todo: icon */}
+-                            <Button className={styles.feedbackButton}>
+-                                <FormattedMessage
+-                                    defaultMessage="{APP_NAME} Feedback"
+-                                    description="Button to give feedback in the menu bar"
+-                                    id="tw.feedbackButton"
+-                                    values={{
+-                                        APP_NAME
+-                                    }}
+-                                />
+-                            </Button>
+-                        </a>
+-                    </div>
+                 </div>
+ 
+                 <div className={styles.accountInfoGroup}>
+diff --git a/src/lib/brand.js b/src/lib/brand.js
+index 8aba8e1..5c79710 100644
+--- a/src/lib/brand.js
++++ b/src/lib/brand.js
+@@ -1,5 +1,5 @@
+ // Legacy export format because this is used by some build-time scripts stuck in the past.
+ // eslint-disable-next-line import/no-commonjs
+ module.exports = {
+-    APP_NAME: 'TurboWarp'
++    APP_NAME: 'Lithium'
+ };
+diff --git a/src/lib/vm-manager-hoc.jsx b/src/lib/vm-manager-hoc.jsx
+index d88dda1..a4dda13 100644
+--- a/src/lib/vm-manager-hoc.jsx
++++ b/src/lib/vm-manager-hoc.jsx
+@@ -1,6 +1,7 @@
+ import bindAll from 'lodash.bindall';
+ import PropTypes from 'prop-types';
+ import React from 'react';
++import {installLithium} from './lithium/gui_bridge';
+ import {connect} from 'react-redux';
+ 
+ import VM from 'scratch-vm';
+@@ -49,6 +50,7 @@ const vmManagerHOC = function (WrappedComponent) {
+                 for (const font of SECURITY_CRITICAL_FONTS) {
+                     this.props.vm.runtime.fontManager.restrictFont(font);
+                 }
++                try { installLithium(this.props.vm); } catch (e) { log.error('lithium bridge failed', e); }
+                 this.props.vm.initialized = true;
+                 this.props.vm.setLocale(this.props.locale, this.props.messages);
+             }

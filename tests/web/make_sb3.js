@@ -45,9 +45,16 @@ a.flag(
 );
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb3-'));
-fs.writeFileSync(path.join(dir, 'project.json'), JSON.stringify(p));
-for (const [n, c] of Object.entries(assets)) fs.writeFileSync(path.join(dir, n), c);
-fs.writeFileSync(path.join(dir, 'pop.wav'), wav());
+// Asset ids are real md5 hashes so that scratch-vm / the TurboWarp GUI accept the project.
+let json = JSON.stringify(p);
+const files = Object.assign({}, assets, { 'pop.wav': wav() });
+for (const [n, c] of Object.entries(files)) {
+    const hash = require('crypto').createHash('md5').update(c).digest('hex');
+    const ext = n.split('.')[1], id = n.split('.')[0];
+    json = json.split('"assetId":"' + id + '"').join('"assetId":"' + hash + '"').split('"md5ext":"' + n + '"').join('"md5ext":"' + hash + '.' + ext + '"');
+    fs.writeFileSync(path.join(dir, hash + '.' + ext), c);
+}
+fs.writeFileSync(path.join(dir, 'project.json'), json);
 const out = path.resolve(process.argv[2] || path.join(__dirname, 'render_test.sb3'));
 fs.rmSync(out, { force: true });
 execFileSync('python3', ['-c', 'import zipfile,sys,os\nz=zipfile.ZipFile(sys.argv[1],"w",zipfile.ZIP_DEFLATED)\nfor f in os.listdir(sys.argv[2]): z.write(os.path.join(sys.argv[2],f),f)\nz.close()', out, dir]);

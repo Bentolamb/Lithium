@@ -1,0 +1,43 @@
+// Loads the TurboWarp-based GUI build, loads render_test.sb3 into the VM, presses the
+// green flag (handled by Lithium) and checks pixels, state sync-back and stop.
+const http=require('http'),fs=require('fs'),path=require('path');
+const { chromium } = require(process.env.PW || '/opt/npm-tools/node_modules/playwright-core');
+const root=process.env.GUI_BUILD||'/home/claude/tw/scratch-gui/build';
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.wasm':'application/wasm','.json':'application/json'};
+const srv=http.createServer((q,r)=>{let f=path.join(root,decodeURIComponent(q.url.split('?')[0]));if(q.url==='/'||q.url.startsWith('/?'))f=path.join(root,'editor.html');if(!fs.existsSync(f)||fs.statSync(f).isDirectory()){r.writeHead(404);r.end();return}r.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream'});fs.createReadStream(f).pipe(r)});
+let fails=0;const check=(n,ok,x)=>{console.log((ok?'PASS ':'FAIL ')+n+(ok?'':'  '+(x||'')));if(!ok)fails++};
+srv.listen(0,async()=>{
+ const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--use-angle=swiftshader','--use-gl=angle','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required']});
+ const p=await b.newPage({viewport:{width:1400,height:800}});
+ p.on('pageerror',e=>{console.log('pageerror',String(e).slice(0,300))});
+ p.on('console',m=>{if(m.type()==='error'||m.type()==='warning')console.log('console.'+m.type(),m.text().slice(0,200))});
+ await p.goto('http://localhost:'+srv.address().port+'/editor.html');
+ await p.waitForFunction(()=>window.vm&&window.vm.renderer&&window.vm.initialized,null,{timeout:60000});
+ await new Promise(r=>setTimeout(r,3000));
+ const sb3=fs.readFileSync(path.join(__dirname,'render_test.sb3')).toString('base64');
+ await p.evaluate(async b64=>{const bin=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));await window.vm.loadProject(bin.buffer);},sb3);
+ await new Promise(r=>setTimeout(r,1500));
+ check('vm loaded 2 sprites', await p.evaluate(()=>window.vm.runtime.targets.length)===3);
+ await p.evaluate(()=>window.vm.greenFlag());
+ await p.waitForFunction(()=>window.vm.lithium&&window.vm.lithium.active,null,{timeout:30000}).catch(()=>{});
+ check('lithium session active', await p.evaluate(()=>window.vm.lithium.active), await p.evaluate(()=>String(window.vm.lithium.error)));
+ const ok=await p.waitForFunction(()=>{const s=window.vm.lithium.lith.state();return String(s.targets[0].variables.done)==='1'},null,{timeout:20000}).then(()=>true).catch(()=>false);
+ check('script ran to completion (done=1)', ok);
+ await new Promise(r=>setTimeout(r,500));
+ const px=await p.evaluate(()=>new Promise(res=>{window.vm.renderer.requestSnapshot(url=>{const i=new Image();i.onload=()=>{const c=document.createElement('canvas');c.width=i.width;c.height=i.height;const g=c.getContext('2d');g.drawImage(i,0,0);const sx=i.width/480,sy=i.height/360;const at=(x,y)=>Array.from(g.getImageData(Math.round((240+x)*sx),Math.round((180-y)*sy),1,1).data);res({w:i.width,A:at(100,60),B:at(-100,-60),bg:at(0,100),floor:at(0,-170)})};i.src=url});window.vm.renderer.draw()}));
+ console.log(JSON.stringify(px));
+ check('red sprite A drawn at (100,60)', px.A[0]>200&&px.A[1]<60&&px.A[2]<60, JSON.stringify(px.A));
+ check('green sprite B drawn', px.B[1]>150&&px.B[0]<60, JSON.stringify(px.B));
+ check('backdrop drawn', px.bg[0]>240&&px.bg[1]>240&&px.bg[2]>240, JSON.stringify(px.bg));
+ await p.screenshot({path:'/tmp/claude-0/shots/gui_run.png'});
+ await p.evaluate(()=>window.vm.stopAll());
+ await new Promise(r=>setTimeout(r,500));
+ check('session ended', !(await p.evaluate(()=>window.vm.lithium.active)));
+ const vmA=await p.evaluate(()=>{const t=window.vm.runtime.targets.find(t=>t.getName()==='A');const st=window.vm.runtime.getTargetForStage();const v=Object.values(st.variables).map(v=>v.name+'='+v.value);return {x:t.x,y:t.y,vis:t.visible,vars:v}});
+ console.log(JSON.stringify(vmA));
+ check('vm synced sprite A to (100,60)', Math.round(vmA.x)===100&&Math.round(vmA.y)===60);
+ check('vm synced variable done=1', vmA.vars.includes('done=1'), JSON.stringify(vmA.vars));
+ await p.screenshot({path:'/tmp/claude-0/shots/gui_stopped.png'});
+ await b.close();srv.close();
+ console.log(fails?('FAILED '+fails):'ALL PASS');process.exit(fails?1:0);
+});
