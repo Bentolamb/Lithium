@@ -31,6 +31,13 @@ std::string Runtime::version() { return "0.0.2"; }
 
 void Runtime::loadProject(Project project) {
     stopAll();
+    if (host_ != nullptr) {
+        for (const auto& t : project_.targets()) {
+            if (t->drawableId >= 0) host_->destroyDrawable(t->drawableId, t->isStage ? kBackgroundLayer : kSpriteLayer);
+            host_->targetRemoved(t->uid);
+        }
+        host_->penClear();
+    }
     project_ = std::move(project);
     cloneCounter_ = 0;
     graveyard_.clear();

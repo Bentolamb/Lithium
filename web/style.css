@@ -41,3 +41,8 @@ pre.error { color: var(--stop); }
        background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .ask label { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ask input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+
+.targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-width: 480px; }
+.targets button.on { border-color: var(--accent); color: var(--accent); }
+.editor { flex: 1 1 520px; min-width: 320px; height: 620px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+#blocks { width: 100%; height: 100%; }

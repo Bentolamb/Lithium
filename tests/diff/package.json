@@ -4,5 +4,8 @@
   "description": "Differential tests: run generated projects in scratch-vm (reference) and Lithium, compare the results.",
   "devDependencies": {
     "scratch-vm": "5.0.300"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12"
   }
 }

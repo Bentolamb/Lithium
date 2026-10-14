@@ -34,6 +34,7 @@ export class StageHost {
             return cache.get(name);
         };
         const skins = new Map();
+        this.skinList = [];
         for (let ti = 0; ti < manifest.length; ti++) {
             const t = manifest[ti];
             for (let ci = 0; ci < t.costumes.length; ci++) {
@@ -41,13 +42,19 @@ export class StageHost {
                 const key = c.md5ext + '|' + c.rotationCenterX + '|' + c.rotationCenterY + '|' + c.bitmapResolution;
                 if (!skins.has(key)) skins.set(key, this.makeSkin(c, await read(c.md5ext)));
                 const skinId = await skins.get(key);
-                if (skinId >= 0) this.lith.setCostumeSkin(ti, ci, skinId);
+                if (skinId >= 0) { this.lith.setCostumeSkin(ti, ci, skinId); this.skinList.push([ti, ci, skinId]); }
             }
         }
         this.lith.syncRenderer();
         // Sounds decode lazily on first play, but start decoding now.
         this.buffers = manifest.map(t => t.sounds.map(s => this.decodeSound(s, read)));
         this.manifest = manifest;
+    }
+
+    // After the runtime reloads the (edited) project, give its costumes their skins again.
+    reapplySkins() {
+        for (const [ti, ci, skin] of this.skinList || []) this.lith.setCostumeSkin(ti, ci, skin);
+        this.lith.syncRenderer();
     }
 
     async makeSkin(c, bytes) {

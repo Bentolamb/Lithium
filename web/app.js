@@ -1,10 +1,12 @@
 import { loadRuntime, readSb3 } from './lithium.js';
 import { StageHost } from './stage.js';
+import { Editor } from './editor.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
 let lith = null;
 let host = null;
+let editor = null;
 let steps = 0;
 let lastStatus = 0;
 let lastTable = 0;
@@ -31,6 +33,8 @@ async function openFile(file) {
         setLog(r.log, !r.ok);
         if (r.ok) {
             await host.loadAssets(buffer);
+            editor.loadProject(JSON.parse(json));
+            renderTargets();
             afterLoad(file.name);
         }
     } catch (e) {
@@ -58,7 +62,30 @@ drop.addEventListener('drop', e => openFile(e.dataTransfer.files[0]));
 
 // ---- controls -----------------------------------------------------------
 
-$('flag').onclick = () => lith.greenFlag();
+function renderTargets() {
+    const box = $('targets');
+    box.replaceChildren();
+    editor.targetNames().forEach((name, i) => {
+        const b = document.createElement('button');
+        b.textContent = name;
+        b.className = i === editor.current ? 'on' : '';
+        b.onclick = () => { editor.selectTarget(i); renderTargets(); };
+        box.appendChild(b);
+    });
+}
+
+// Runs the project; if the blocks were edited, the runtime reloads the edited project first.
+function runProject() {
+    if (editor && editor.project && editor.dirty) {
+        const r = lith.loadProjectJson(editor.toProjectJson());
+        setLog(r.log, !r.ok);
+        if (!r.ok) return;
+        host.reapplySkins();
+        editor.dirty = false;
+    }
+    lith.greenFlag();
+}
+$('flag').onclick = runProject;
 $('stop').onclick = () => { lith.stopAll(); refresh(true); };
 $('turbo').onchange = e => lith.setTurbo(e.target.checked);
 $('compat').onchange = e => lith.setCompat(e.target.checked);
@@ -81,7 +108,7 @@ window.addEventListener('mouseup', e => { if (lith) mouseData(e, 4); });
 
 document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-    if (e.key === 'Enter' && !$('flag').disabled) lith.greenFlag();
+    if (e.key === 'Enter' && !$('flag').disabled) runProject();
     if (e.key === 'Escape' && !$('stop').disabled) lith.stopAll();
 });
 
@@ -146,7 +173,8 @@ function frame(now) {
         $('status').textContent = 'runtime ' + lith.version;
         host = new StageHost(stage, lith);
         lith.setHost((op, a, b, c, d, p) => host.handle(op, a, b, c, d, p));
-        window.lithium = { lith, host };  // for tests and the console
+        editor = new Editor($('blocks'), {});
+        window.lithium = { lith, host, editor, runProject };  // for tests and the console
         requestAnimationFrame(frame);
     } catch (e) {
         $('status').textContent = 'runtime failed to load';
