@@ -33,6 +33,7 @@ struct Input {
     };
     Kind kind = Kind::None;
     Value literal;
+    std::string id;  // broadcast message id for [11, name, id] primitives
     BlockIndex block = kNoBlock;
 };
 
@@ -72,7 +73,7 @@ public:
     BlockIndex find(std::string_view id) const;  // kNoBlock if missing
 
     void setNext(BlockIndex block, BlockIndex next);
-    void setInputLiteral(BlockIndex block, std::string name, Value value);
+    void setInputLiteral(BlockIndex block, std::string name, Value value, std::string id = {});
     void setInputBlock(BlockIndex block, std::string name, BlockIndex reporter);
     // Statement input (SUBSTACK, SUBSTACK2). kNoBlock leaves the branch empty.
     void setBranch(BlockIndex block, std::string name, BlockIndex first);
@@ -95,9 +96,12 @@ private:
 };
 
 struct Variable {
+    enum class Type { Scalar, List, Broadcast };
     std::string id;
     std::string name;
-    Value value;
+    Type type = Type::Scalar;
+    Value value;               // Scalar
+    std::vector<Value> list;   // List
 };
 
 class Target {
@@ -116,12 +120,19 @@ public:
     std::deque<Variable> variables;  // deque: references stay valid on growth
 
     Variable& addVariable(std::string id, std::string name, Value initial);
+    Variable& addList(std::string id, std::string name, std::vector<Value> items);
+    Variable& addBroadcast(std::string id, std::string name);
     // Local variables first, then the stage's (globals). nullptr if missing.
+    // By id the type does not matter (as in scratch-vm).
     Variable* lookupVariableById(std::string_view id);
-    Variable* lookupVariableByName(std::string_view name);
-    // Mirrors Target.lookupOrCreateVariable: by id, then by name, else create
-    // a local variable.
+    Variable* lookupVariableByNameAndType(std::string_view name, Variable::Type type);
+    // Mirror Target.lookupOrCreateVariable / lookupOrCreateList: by id, then
+    // by name and type, else create a local variable.
     Variable& lookupOrCreateVariable(std::string_view id, std::string_view name);
+    Variable& lookupOrCreateList(std::string_view id, std::string_view name);
+    // Target.lookupBroadcastMsg: by id when given, else by name (case-insensitive).
+    // Call on the stage. nullptr if there is no such message.
+    Variable* lookupBroadcastMsg(std::string_view id, std::string_view name);
 
     void setStage(Target* stage) { stage_ = stage; }
 

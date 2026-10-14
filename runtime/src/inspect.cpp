@@ -35,9 +35,20 @@ std::string dumpState(Runtime& rt) {
                ",\"size\":" + number(t->size) + ",\"visible\":" + (t->visible ? "true" : "false") + ",\"variables\":{";
         bool first = true;
         for (const Variable& v : t->variables) {
+            if (v.type != Variable::Type::Scalar) continue;
             if (!first) out += ',';
             first = false;
             out += jsonQuote(v.name) + ":" + value(v.value);
+        }
+        out += "},\"lists\":{";
+        first = true;
+        for (const Variable& v : t->variables) {
+            if (v.type != Variable::Type::List) continue;
+            if (!first) out += ',';
+            first = false;
+            out += jsonQuote(v.name) + ":[";
+            for (std::size_t i = 0; i < v.list.size(); i++) out += (i ? "," : "") + value(v.list[i]);
+            out += "]";
         }
         out += "}}";
     }

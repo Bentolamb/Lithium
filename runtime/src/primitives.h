@@ -41,6 +41,7 @@ public:
     bool stackTimerFinished() const;
 
     void yield() const { thread.status = Thread::Status::Yield; }
+    void yieldTick() const { thread.status = Thread::Status::YieldTick; }
     void startBranch(int branchNum, bool isLoop) const;
 };
 

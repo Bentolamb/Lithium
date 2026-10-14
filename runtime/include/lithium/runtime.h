@@ -86,9 +86,17 @@ public:
     std::shared_ptr<ThreadList> threads() const { return threads_; }
     void stopThread(Thread& thread);
 
+    // Starts every script whose hat has this opcode (and, when given, whose
+    // hat field `matchField.first` equals `matchField.second` ignoring case).
+    // Returns the started threads. Runtime.startHats in scratch-vm.
+    using HatField = std::pair<std::string, std::string>;
+    std::vector<std::shared_ptr<Thread>> startHats(std::string_view opcode, const HatField* matchField = nullptr);
+    // Runtime.isActiveThread / isWaitingThread.
+    static bool isActiveThread(const Thread& thread);
+    static bool isWaitingThread(const Thread& thread);
+
 private:
     std::shared_ptr<Thread> pushThread(BlockIndex topBlock, Target* target);
-    void startHats(std::string_view opcode);
 
     Project project_;
     std::shared_ptr<ThreadList> threads_;

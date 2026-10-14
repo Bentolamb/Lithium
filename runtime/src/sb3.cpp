@@ -16,6 +16,7 @@ using Json = nlohmann::ordered_json;  // keeps block order: script order depends
 // SB3 primitive type codes.
 constexpr int kPrimVariable = 12;
 constexpr int kPrimList = 13;
+constexpr int kPrimBroadcast = 11;
 
 Value valueFromJson(const Json& j) {
     if (j.is_string()) return Value::string(j.get<std::string>());
@@ -86,9 +87,12 @@ private:
             const BlockIndex reporter = bc.create("data_variable", "__var" + std::to_string(synthetic_++));
             bc.setField(reporter, "VARIABLE", valueFromJson(prim[1]), prim[2].is_string() ? prim[2].get<std::string>() : "");
             bc.setInputBlock(owner, name, reporter);
-        } else if (type == kPrimList) {
-            warnings_.push_back(target_.name + ": list reporter in input '" + name + "' not supported yet");
-            bc.setInputLiteral(owner, name, Value::string(""));
+        } else if (type == kPrimList && prim.size() >= 3) {
+            const BlockIndex reporter = bc.create("data_listcontents", "__list" + std::to_string(synthetic_++));
+            bc.setField(reporter, "LIST", valueFromJson(prim[1]), prim[2].is_string() ? prim[2].get<std::string>() : "");
+            bc.setInputBlock(owner, name, reporter);
+        } else if (type == kPrimBroadcast && prim.size() >= 3) {
+            bc.setInputLiteral(owner, name, valueFromJson(prim[1]), prim[2].is_string() ? prim[2].get<std::string>() : "");
         } else if (prim.size() >= 2) {
             bc.setInputLiteral(owner, name, valueFromJson(prim[1]));
         } else {
@@ -154,6 +158,26 @@ void loadVariables(Target& target, const Json& vars) {
     }
 }
 
+void loadLists(Target& target, const Json& lists) {
+    if (!lists.is_object()) return;
+    for (auto it = lists.begin(); it != lists.end(); ++it) {
+        const Json& l = it.value();
+        if (!l.is_array() || l.empty()) continue;
+        std::vector<Value> items;
+        if (l.size() > 1 && l[1].is_array()) {
+            for (const Json& item : l[1]) items.push_back(valueFromJson(item));
+        }
+        target.addList(it.key(), l[0].is_string() ? l[0].get<std::string>() : it.key(), std::move(items));
+    }
+}
+
+void loadBroadcasts(Target& target, const Json& broadcasts) {
+    if (!broadcasts.is_object()) return;
+    for (auto it = broadcasts.begin(); it != broadcasts.end(); ++it) {
+        target.addBroadcast(it.key(), it.value().is_string() ? it.value().get<std::string>() : it.key());
+    }
+}
+
 }  // namespace
 
 Sb3LoadResult loadSb3Json(std::string_view text) {
@@ -207,9 +231,8 @@ Sb3LoadResult loadSb3Json(std::string_view text) {
             target->visible = j->value("visible", true);
         }
         if (j->contains("variables")) loadVariables(*target, (*j)["variables"]);
-        if (j->contains("lists") && (*j)["lists"].is_object() && !(*j)["lists"].empty()) {
-            result.warnings.push_back(target->name + ": lists are not supported yet");
-        }
+        if (j->contains("lists")) loadLists(*target, (*j)["lists"]);
+        if (j->contains("broadcasts")) loadBroadcasts(*target, (*j)["broadcasts"]);
         if (j->contains("blocks") && (*j)["blocks"].is_object()) {
             TargetLoader(*target, (*j)["blocks"], result.warnings, unknownOpcodes).load();
         }

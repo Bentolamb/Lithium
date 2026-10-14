@@ -21,7 +21,7 @@ async function run(jsonText, frames) {
         name: t.sprite.name,
         isStage: t.isStage,
         x: norm(t.x), y: norm(t.y), direction: norm(t.direction),
-        variables: Object.fromEntries(Object.values(t.variables).map(v => [v.name, norm(v.value)])),
+        variables: Object.fromEntries(Object.values(t.variables).filter(v => v.type === '').map(v => [v.name, norm(v.value)])),
         lists: Object.fromEntries(Object.values(t.variables).filter(v => v.type === 'list').map(v => [v.name, v.value.map(norm)])),
     }));
     return { threads: vm.runtime.threads.length, targets };

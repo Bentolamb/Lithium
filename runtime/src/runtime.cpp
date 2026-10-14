@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 
+#include "lithium/text.h"
 #include "primitives.h"
 #include "sequencer.h"
 
@@ -89,15 +90,33 @@ std::shared_ptr<Thread> Runtime::pushThread(BlockIndex topBlock, Target* target)
     return thread;
 }
 
-void Runtime::startHats(std::string_view opcode) {
+bool Runtime::isActiveThread(const Thread& thread) {
+    return !thread.stack.empty() && thread.status != Thread::Status::Done;
+}
+
+bool Runtime::isWaitingThread(const Thread& thread) {
+    return thread.status == Thread::Status::PromiseWait || thread.status == Thread::Status::YieldTick ||
+           !isActiveThread(thread);
+}
+
+std::vector<std::shared_ptr<Thread>> Runtime::startHats(std::string_view opcode, const HatField* matchField) {
+    std::vector<std::shared_ptr<Thread>> started;
     const Primitive* hat = lookupPrimitive(opcode);
-    if (hat == nullptr || hat->kind != Primitive::Kind::Hat) return;
+    if (hat == nullptr || hat->kind != Primitive::Kind::Hat) return started;
+    const std::string wanted = matchField ? jsToUpperCase(matchField->second) : std::string();
     const auto& targets = project_.targets();
     // Top layer first, like scratch-vm's allScriptsByOpcodeDo.
     for (std::size_t t = targets.size(); t-- > 0;) {
         Target* target = targets[t].get();
-        for (const BlockIndex script : target->blocks.scripts()) {
-            if (target->blocks.at(script).opcode != opcode) continue;
+        // Scripts may be added while hats run; iterate a snapshot.
+        const std::vector<BlockIndex> scripts = target->blocks.scripts();
+        for (const BlockIndex script : scripts) {
+            const Block& hatBlock = target->blocks.at(script);
+            if (hatBlock.opcode != opcode) continue;
+            if (matchField != nullptr) {
+                const Field* f = hatBlock.findField(matchField->first);
+                if (f == nullptr || jsToUpperCase(f->value.toString()) != wanted) continue;
+            }
             if (hat->restartExistingThreads) {
                 // Restart in place so the thread keeps its position in the list.
                 bool restarted = false;
@@ -107,6 +126,7 @@ void Runtime::startHats(std::string_view opcode) {
                         fresh->target = target;
                         fresh->pushStack(script);
                         existing = fresh;
+                        started.push_back(fresh);
                         restarted = true;
                         break;
                     }
@@ -124,15 +144,16 @@ void Runtime::startHats(std::string_view opcode) {
                 }
                 if (running) continue;
             }
-            pushThread(script, target);
+            started.push_back(pushThread(script, target));
         }
     }
+    return started;
 }
 
 std::optional<Value> Runtime::variableValue(std::string_view target, std::string_view variable) {
     Target* t = project_.findTarget(target);
     if (t == nullptr) return std::nullopt;
-    Variable* v = t->lookupVariableByName(variable);
+    Variable* v = t->lookupVariableByNameAndType(variable, Variable::Type::Scalar);
     if (v == nullptr) return std::nullopt;
     return v->value;
 }

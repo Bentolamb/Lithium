@@ -8,6 +8,12 @@
 const L = v => ({ lit: String(v) });
 const N = v => ({ lit: String(v), num: true });
 const V = name => ({ varRef: name });
+// Broadcast message input: BC('go', 'id_go') is the dropdown; BCX(expr, 'go', 'id_go') a reporter over it.
+const BC = (name, id) => ({ bc: true, name, id: id === undefined ? 'bc_' + name : id });
+const BCX = (expr, name, id) => ({ bcExpr: expr, name, id: id === undefined ? 'bc_' + name : id });
+// Field values for list blocks: lf('L') -> LIST field; bf('go') -> BROADCAST_OPTION field.
+const lf = name => [name, 'l_' + name];
+const bf = (name, id) => [name, id === undefined ? 'bc_' + name : id];
 const B = (op, inputs = {}, fields = {}) => ({ op, inputs, fields });
 const S = B;
 const stack = (...stmts) => ({ stack: stmts });
@@ -25,12 +31,14 @@ class Target {
         this.blocks = {};
         this.variables = {};
         this.lists = {};
+        this.broadcasts = {};
         this.n = 0;
     }
     id(prefix = 'b') { return `${this.name.replace(/\W/g, '')}_${prefix}${this.n++}`; }
     varId(name) { return 'v_' + name; }
     defineVar(name, initial = 0) { this.variables[this.varId(name)] = [name, initial]; }
     defineList(name, items = []) { this.lists['l_' + name] = [name, items]; }
+    defineBroadcast(name, id) { this.broadcasts[id === undefined ? 'bc_' + name : id] = name; }
 
     // Compile an input value to SB3 input JSON.
     input(name, spec) {
@@ -38,12 +46,15 @@ class Target {
             const first = this.chain(spec.stack, false);
             return first ? [2, first] : null;
         }
+        if (spec && spec.bc) return [1, [11, spec.name, spec.id]];
+        if (spec && spec.bcExpr) return [3, this.blockFor(spec.bcExpr), [11, spec.name, spec.id]];
         if (spec && spec.lit !== undefined) return [1, [spec.num ? 4 : 10, spec.lit]];
         if (spec && spec.varRef) return [3, [12, spec.varRef, this.varId(spec.varRef)], [10, '']];
         if (spec && spec.listRef) return [3, [13, spec.listRef, 'l_' + spec.listRef], [10, '']];
         if (spec && spec.op) return [3, this.block(spec, false), [10, '']];
         throw new Error('bad input spec ' + JSON.stringify(spec));
     }
+    blockFor(spec) { return this.block(spec, false); }
     // Create a block (and its nested reporters); returns its id.
     block(spec, topLevel) {
         const id = this.id();
@@ -79,7 +90,7 @@ class Target {
 
     toJSON() {
         const base = {
-            isStage: this.isStage, name: this.name, variables: this.variables, lists: this.lists, broadcasts: {},
+            isStage: this.isStage, name: this.name, variables: this.variables, lists: this.lists, broadcasts: this.broadcasts,
             blocks: this.blocks, comments: {}, currentCostume: 0, costumes: [COSTUME], sounds: [], volume: 100, layerOrder: this.isStage ? 0 : this.order,
         };
         if (this.isStage) return { ...base, tempo: 60, videoTransparency: 50, videoState: 'on', textToSpeechLanguage: null };
@@ -108,4 +119,4 @@ class Project {
     }
 }
 
-module.exports = { L, N, V, B, S, stack, Project };
+module.exports = { L, N, V, B, S, BC, BCX, lf, bf, stack, Project };

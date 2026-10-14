@@ -7,18 +7,26 @@
 // context is reset whenever execution moves on to the next block.
 #pragma once
 
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "lithium/project.h"
 
 namespace lithium {
 
+class Thread;
+
 // Per-block scratch state (scratch-vm: BlockUtility.stackFrame).
 struct ExecutionContext {
     std::optional<double> loopCounter;  // control_repeat
     std::optional<double> timerStart;   // control_wait: runtime.currentMSecs at start
     double duration = 0.0;              // control_wait: milliseconds
+    // event_broadcastandwait
+    const Variable* broadcastVar = nullptr;
+    bool startedThreadsSet = false;
+    std::vector<std::shared_ptr<Thread>> startedThreads;
 };
 
 struct StackFrame {

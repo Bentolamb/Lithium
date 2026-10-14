@@ -2,7 +2,7 @@
 // frames in scratch-vm and in Lithium; every variable, position and direction
 // must match.
 'use strict';
-const { Project, L, N, V, B, S, stack } = require('./sb3gen.js');
+const { Project, L, N, V, B, S, BC, BCX, lf, bf, stack } = require('./sb3gen.js');
 
 const NUMS = ['', ' ', '0', '-0', '1', '-1', '2', '0.5', '-1.5', '10', '9', '100', '1e3', '1e21', '-1e21', '0x10', '0b11', '0o7',
               ' 12 ', '12abc', 'abc', '.5', '5.', '+5', 'Infinity', '-Infinity', 'NaN', 'true', '1e308', '1e-7', '123456789012345680000',
@@ -204,4 +204,132 @@ function* cases() {
     }
 }
 
-module.exports = { cases };
+
+// Deterministic pseudo-random numbers so generated programs are reproducible.
+function rng(seed) {
+    let a = seed >>> 0;
+    return () => {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function* moreCases() {
+    // ---- broadcasts ------------------------------------------------------
+    {
+        // order of receivers: top layer first; log shows who ran when
+        const p = new Project();
+        const st = p.stage;
+        st.defineVar('log', '');
+        st.defineBroadcast('go'); st.defineBroadcast('Go', 'bc_Go2'); st.defineBroadcast('other');
+        const a = p.sprite('A'), b = p.sprite('B');
+        const append = (t, tag) => S('data_setvariableto', { VALUE: B('operator_join', { STRING1: V('log'), STRING2: L(tag) }) }, { VARIABLE: ['log', st.varId('log')] });
+        for (const [t, tag] of [[st, 'S'], [a, 'A'], [b, 'B']]) {
+            t.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('go') }), append(t, tag));
+        }
+        // a receiver listening for "GO" (different case) and one for an undefined message
+        a.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('GO', 'bc_GO') }), append(a, 'a2'));
+        a.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('nobody', 'bc_nobody') }), append(a, 'nb'));
+        st.flag(S('event_broadcast', { BROADCAST_INPUT: BC('go') }), append(st, '1'),
+                S('event_broadcast', { BROADCAST_INPUT: BC('Go', 'bc_Go2') }), append(st, '2'),
+                S('event_broadcast', { BROADCAST_INPUT: BC('other') }), append(st, '3'),
+                S('event_broadcast', { BROADCAST_INPUT: BC('undefined_msg', 'bc_undef') }), append(st, '4'),
+                S('event_broadcast', { BROADCAST_INPUT: BCX(B('operator_join', { STRING1: L('g'), STRING2: L('O') }), 'zzz', 'bc_zzz') }), append(st, '5'));
+        yield { name: 'broadcast_order', project: p, frames: 3 };
+    }
+    {
+        // broadcast and wait with receivers that loop (yield) and interleave with other scripts
+        const p = new Project();
+        const st = p.stage;
+        st.defineVar('log', '');
+        st.defineBroadcast('go'); st.defineBroadcast('chain'); st.defineBroadcast('empty');
+        const a = p.sprite('A'), b = p.sprite('B');
+        const append = tag => S('data_setvariableto', { VALUE: B('operator_join', { STRING1: V('log'), STRING2: L(tag) }) }, { VARIABLE: ['log', st.varId('log')] });
+        a.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('go') }), S('control_repeat', { TIMES: N('3'), SUBSTACK: stack(append('r')) }), append('R'));
+        b.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('go') }), S('control_repeat', { TIMES: N('2'), SUBSTACK: stack(append('q')) }), append('Q'));
+        b.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('chain') }), append('c'), S('event_broadcastandwait', { BROADCAST_INPUT: BC('go') }), append('C'));
+        st.flag(append('0'), S('event_broadcastandwait', { BROADCAST_INPUT: BC('go') }), append('W'),
+                S('event_broadcastandwait', { BROADCAST_INPUT: BC('chain') }), append('V'),
+                S('event_broadcastandwait', { BROADCAST_INPUT: BC('empty') }), append('E'),
+                S('event_broadcastandwait', { BROADCAST_INPUT: BC('missing', 'bc_missing') }), append('M'));
+        st.flag(S('control_repeat', { TIMES: N('6'), SUBSTACK: stack(append('x')) }));
+        yield { name: 'broadcast_and_wait', project: p, frames: 5 };
+    }
+    {
+        // restarting a running receiver; broadcast from a receiver
+        const p = new Project();
+        const st = p.stage;
+        st.defineVar('n', 0); st.defineVar('done', 0); st.defineVar('log', '');
+        st.defineBroadcast('go'); st.defineBroadcast('again');
+        const append = tag => S('data_setvariableto', { VALUE: B('operator_join', { STRING1: V('log'), STRING2: L(tag) }) }, { VARIABLE: ['log', st.varId('log')] });
+        st.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('go') }), st.change('n', N('1')),
+                  S('control_repeat', { TIMES: N('4'), SUBSTACK: stack(st.change('n', N('10'))) }), st.change('done', N('1')));
+        st.script(S('event_whenbroadcastreceived', {}, { BROADCAST_OPTION: bf('again') }), append('A'), S('event_broadcast', { BROADCAST_INPUT: BC('go') }));
+        st.flag(S('event_broadcast', { BROADCAST_INPUT: BC('go') }),
+                S('control_repeat', { TIMES: N('2'), SUBSTACK: stack(append('.')) }),
+                S('event_broadcast', { BROADCAST_INPUT: BC('go') }),
+                S('control_repeat', { TIMES: N('1'), SUBSTACK: stack(append(',')) }),
+                S('event_broadcast', { BROADCAST_INPUT: BC('again') }));
+        yield { name: 'broadcast_restart', project: p, frames: 6 };
+    }
+    // ---- lists -----------------------------------------------------------
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        const r = rng(seed);
+        const pick = arr => arr[Math.floor(r() * arr.length)];
+        const p = new Project();
+        const st = p.stage;
+        st.defineList('L', ['a', 'b', 'c']);
+        st.defineList('M', ['1', 2, true, '']);
+        st.defineList('N', []);
+        const spr = p.sprite('Sprite1');
+        spr.defineList('local', ['x']);
+        const names = ['L', 'M', 'N', 'local'];
+        const items = () => pick([L('a'), L('b'), L('x y'), L('1'), L('2.5'), L(''), L('😀'), L('abc'), N('7'), L(' '), L('A'),
+                                  B('operator_add', { NUM1: N('1'), NUM2: N('2') }), B('operator_equals', { OPERAND1: N('1'), OPERAND2: N('1') }), V('cap0')]);
+        const idx = () => pick([L('1'), L('2'), L('3'), L('4'), L('0'), L('-1'), L('last'), L('all'), L('1.5'), L('2.9'), L('abc'), L(''), L('10'), L('1e0'),
+                                B('operator_add', { NUM1: N('1'), NUM2: N('1') }), L('LAST'), L(' 2 '), L('last ')]);
+        const mk = () => {
+            const name = pick(names);
+            const t = name === 'local' ? spr : st;
+            const f = { LIST: lf(name) };
+            const kind = Math.floor(r() * 9);
+            const ops = [
+                () => S('data_addtolist', { ITEM: items() }, f),
+                () => S('data_deleteoflist', { INDEX: idx() }, f),
+                () => S('data_insertatlist', { INDEX: idx(), ITEM: items() }, f),
+                () => S('data_replaceitemoflist', { INDEX: idx(), ITEM: items() }, f),
+                () => S('data_deletealloflist', {}, f),
+                () => S('data_addtolist', { ITEM: items() }, f),
+                () => S('data_insertatlist', { INDEX: idx(), ITEM: items() }, f),
+                () => S('data_deleteoflist', { INDEX: idx() }, f),
+                () => S('data_replaceitemoflist', { INDEX: idx(), ITEM: items() }, f),
+            ];
+            return { t, stmt: ops[kind]() };
+        };
+        const stmts = [];
+        let cap = 0;
+        st.defineVar('cap0', 'seed');
+        const capture = (name, expr) => { st.defineVar(name, 'UNSET'); return S('data_setvariableto', { VALUE: expr }, { VARIABLE: [name, st.varId(name)] }); };
+        const all = [];
+        for (let i = 0; i < 160; i++) {
+            const { t, stmt } = mk();
+            all.push(stmt);
+            const name = pick(names);
+            const f = { LIST: lf(name) };
+            const q = Math.floor(r() * 5);
+            const exprs = [() => B('data_listcontents', {}, f), () => B('data_lengthoflist', {}, f), () => B('data_itemoflist', { INDEX: idx() }, f),
+                           () => B('data_itemnumoflist', { ITEM: items() }, f), () => B('data_listcontainsitem', { ITEM: items() }, f)];
+            all.push(capture('c' + i, exprs[q]()));
+        }
+        // all statements live in one script of the sprite (it can see global and local lists)
+        spr.flag(...all.map(x => x));
+        // variables are stage-level; sprite blocks reference them by id, which resolves through the stage
+        yield { name: 'lists_random_' + seed, project: p, frames: 4 };
+    }
+}
+
+function* allCases() { yield* cases(); yield* moreCases(); }
+module.exports = { cases: allCases };

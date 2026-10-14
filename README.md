@@ -4,13 +4,13 @@ A standalone Scratch-compatible visual programming environment with a C++ runtim
 License: AGPL-3.0 (see `LICENSE`).
 
 ## Status
-Milestone 4: minimal browser shell (open/run an `.sb3`, stage view, variables) on top of the M2/M3 runtime.
+Milestone 5: differential testing against real scratch-vm, plus operators, broadcasts, direction and list blocks. (M4 browser shell, M3 SB3 loader, M2 runtime core.)
 
 | Piece | State |
 |---|---|
 | Value type and coercion (`value.h`) | ported from scratch-vm `Cast`, incl. JS `Number()`/`String()` quirks |
 | Scheduler (`sequencer.cpp`, `thread.cpp`) | literal port of `stepThreads`/`stepThread`: 60/30 Hz frames, 75% work budget, redraw gating, turbo, warp timer, loop yields |
-| Blocks (`primitives.cpp`) | green flag; repeat, forever, if, if/else, repeat until, while, wait, wait until, stop; set/change variable; arithmetic, comparison, and/or/not, join; move steps, x/y set/change, go to x y, x/y/direction reporters |
+| Blocks (`primitives.cpp`) | green flag; repeat, forever, if, if/else, repeat until, while, wait, wait until, stop; set/change variable; operators (arithmetic, comparison, logic, join, letter of, length, contains, mod, round, math ops, random); broadcast, broadcast and wait, when I receive; list blocks (add, delete, insert, replace, item, item #, length, contains, contents, delete all); move steps, x/y set/change, go to x y, turn left/right, point in direction, x/y/direction reporters |
 | SB3 loader (`sb3.cpp`) | reads `project.json`: targets, layers, variables, block graph, inputs (shadows, obscured shadows, inline variable reporters), fields. Unknown opcodes load with a warning and run as no-ops |
 | `tools/run_sb3.js` | Node runner: unzips an `.sb3`, runs it in the WASM runtime, prints final variables and positions |
 | Web shell (`web/`) | open or drop an `.sb3`, Go/Stop, turbo, 30 fps mode, stage canvas (sprites as markers), live variables and sprite table, load log. A runner, not an editor yet: no block editing, costumes or sounds |
@@ -19,14 +19,21 @@ Milestone 4: minimal browser shell (open/run an `.sb3`, stage view, variables) o
 | WASM build (Emscripten 6.0.12) | working on Windows 11 |
 | Editor, SB3 loader, TXT export | not started |
 
-### Known gaps (M2)
-- Case-insensitive comparison folds ASCII letters only.
-- No custom blocks/procedures, clones, broadcasts, or other hat types yet.
+### Known gaps
+- No custom blocks/procedures, clones, or most other hat types yet.
 - Reporters are evaluated synchronously; an unknown reporter evaluates to `""` (stands in for JS `undefined`).
 - Sprites are not fenced to the stage (needs renderer bounds).
-- `Math.sin/cos` may differ from V8 by 1 ulp.
-- SB3: lists, broadcasts, costumes/sounds and shadow menu blocks are not loaded; the host unzips the `.sb3` and passes the `project.json` text.
-- Fixtures in `tests/projects/` are the user's TurboWarp projects (`.sb3` plus the extracted `project.json` used by the tests).
+- `sin/cos/tan` may differ from V8 by a few ulp (tolerated in the diff harness; a deterministic math layer is planned).
+- Strings use UTF-16 semantics (length, letter of, comparison) and full Unicode case folding; the final-sigma rule is approximate.
+- SB3: costumes/sounds are not loaded; the host unzips the `.sb3` and passes the `project.json` text.
+- Fixtures in `tests/projects/` are the user's TurboWarp projects.
+
+## Differential testing
+`tests/diff/` generates `project.json` programs, runs them in scratch-vm 5.0.300 (headless, Node) and in `lithium_run`, and compares variables, lists, positions, directions and thread counts.
+```
+cd tests/diff && npm install && node run_diff.js        # --only <substring> filters cases
+```
+Current: 44/44 cases identical (17k values; max libm difference 2 ulp).
 
 ## Build and test (native)
 ```

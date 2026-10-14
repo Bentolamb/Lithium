@@ -122,6 +122,171 @@ Value dataVariable(PrimitiveContext& cx) {
     return cx.target().lookupOrCreateVariable(field->id, field->value.toString()).value;
 }
 
+
+// -------------------------------------------------------------------- events
+
+// The (id, name) pair scratch-vm builds for a broadcast block.
+struct BroadcastRef {
+    std::string id;    // empty = null
+    std::string name;
+};
+
+BroadcastRef broadcastOption(PrimitiveContext& cx) {
+    const Input* in = cx.block.findInput("BROADCAST_INPUT");
+    if (in != nullptr && in->kind == Input::Kind::Literal) return {in->id, in->literal.toString()};
+    // A reporter is plugged in: cast to string, no id.
+    return {std::string(), cx.input("BROADCAST_INPUT").toString()};
+}
+
+void eventBroadcast(PrimitiveContext& cx) {
+    const BroadcastRef ref = broadcastOption(cx);
+    const Variable* var = cx.runtime.project().stage().lookupBroadcastMsg(ref.id, ref.name);
+    if (var != nullptr) {
+        const Runtime::HatField match{"BROADCAST_OPTION", var->name};
+        cx.runtime.startHats("event_whenbroadcastreceived", &match);
+    }
+}
+
+void eventBroadcastAndWait(PrimitiveContext& cx) {
+    ExecutionContext& ec = cx.stackFrame();
+    if (ec.broadcastVar == nullptr) {
+        const BroadcastRef ref = broadcastOption(cx);
+        ec.broadcastVar = cx.runtime.project().stage().lookupBroadcastMsg(ref.id, ref.name);
+    }
+    if (ec.broadcastVar == nullptr) return;
+    // Have we run before, starting threads?
+    if (!ec.startedThreadsSet) {
+        const Runtime::HatField match{"BROADCAST_OPTION", ec.broadcastVar->name};
+        ec.startedThreads = cx.runtime.startHats("event_whenbroadcastreceived", &match);
+        ec.startedThreadsSet = true;
+        if (ec.startedThreads.empty()) return;  // nothing was started
+    }
+    // Scratch 2 considers threads to be waiting while they are still in the
+    // runtime's list, even if they have run all their blocks.
+    const auto live = cx.runtime.threads();
+    bool waiting = false;
+    for (const auto& started : ec.startedThreads) {
+        if (std::find(live->begin(), live->end(), started) != live->end()) { waiting = true; break; }
+    }
+    if (!waiting) return;
+    // If every started thread waits for the next tick or later, yield for a
+    // tick as well. Otherwise yield until the next loop of the threads.
+    bool allWaiting = true;
+    for (const auto& started : ec.startedThreads) {
+        if (!Runtime::isWaitingThread(*started)) { allWaiting = false; break; }
+    }
+    if (allWaiting) cx.yieldTick();
+    else cx.yield();
+}
+
+// ---------------------------------------------------------------------- lists
+
+constexpr std::size_t kListItemLimit = 200000;
+constexpr long kListInvalid = -1;
+constexpr long kListAll = -2;
+
+// Cast.toListIndex: a 1-based index, or kListInvalid / kListAll.
+long toListIndex(PrimitiveContext& cx, const Value& index, std::size_t length, bool acceptAll) {
+    if (index.isString()) {
+        const std::string& s = index.toString();
+        if (s == "all") return acceptAll ? kListAll : kListInvalid;
+        if (s == "last") return length > 0 ? static_cast<long>(length) : kListInvalid;
+        if (s == "random" || s == "any") {
+            return length > 0 ? 1 + static_cast<long>(std::floor(cx.runtime.random() * static_cast<double>(length))) : kListInvalid;
+        }
+    }
+    const double d = std::floor(index.toNumber());
+    if (d < 1 || d > static_cast<double>(length)) return kListInvalid;
+    return static_cast<long>(d);
+}
+
+Variable& listOf(PrimitiveContext& cx) {
+    const Field* f = cx.field("LIST");
+    static Variable scratch;  // never reached for well-formed blocks
+    if (f == nullptr) { scratch = Variable{}; scratch.type = Variable::Type::List; return scratch; }
+    return cx.target().lookupOrCreateList(f->id, f->value.toString());
+}
+
+Value dataListContents(PrimitiveContext& cx) {
+    const Variable& list = listOf(cx);
+    // If the list is all single letters, join with no separator; else with a space.
+    bool allSingleLetters = true;
+    for (const Value& item : list.list) {
+        if (!(item.isString() && utf8ToUtf16(item.toString()).size() == 1)) { allSingleLetters = false; break; }
+    }
+    std::string out;
+    for (std::size_t i = 0; i < list.list.size(); i++) {
+        if (i > 0 && !allSingleLetters) out += ' ';
+        out += list.list[i].toString();
+    }
+    // Re-join surrogate halves that ended up adjacent.
+    return Value::string(utf16ToUtf8(utf8ToUtf16(out)));
+}
+
+void dataAddToList(PrimitiveContext& cx) {
+    Variable& list = listOf(cx);
+    if (list.list.size() < kListItemLimit) list.list.push_back(cx.input("ITEM"));
+}
+
+void dataDeleteOfList(PrimitiveContext& cx) {
+    Variable& list = listOf(cx);
+    const long index = toListIndex(cx, cx.input("INDEX"), list.list.size(), true);
+    if (index == kListInvalid) return;
+    if (index == kListAll) { list.list.clear(); return; }
+    list.list.erase(list.list.begin() + (index - 1));
+}
+
+void dataDeleteAllOfList(PrimitiveContext& cx) { listOf(cx).list.clear(); }
+
+void dataInsertAtList(PrimitiveContext& cx) {
+    const Value item = cx.input("ITEM");
+    Variable& list = listOf(cx);
+    const long index = toListIndex(cx, cx.input("INDEX"), list.list.size() + 1, false);
+    if (index == kListInvalid) return;
+    if (static_cast<std::size_t>(index) > kListItemLimit) return;
+    list.list.insert(list.list.begin() + (index - 1), item);
+    // If inserting caused the list to grow past the limit, drop the last item.
+    if (list.list.size() > kListItemLimit) list.list.pop_back();
+}
+
+void dataReplaceItemOfList(PrimitiveContext& cx) {
+    const Value item = cx.input("ITEM");
+    Variable& list = listOf(cx);
+    const long index = toListIndex(cx, cx.input("INDEX"), list.list.size(), false);
+    if (index == kListInvalid) return;
+    list.list[static_cast<std::size_t>(index - 1)] = item;
+}
+
+Value dataItemOfList(PrimitiveContext& cx) {
+    Variable& list = listOf(cx);
+    const long index = toListIndex(cx, cx.input("INDEX"), list.list.size(), false);
+    if (index == kListInvalid) return Value::string("");
+    return list.list[static_cast<std::size_t>(index - 1)];
+}
+
+Value dataItemNumOfList(PrimitiveContext& cx) {
+    const Value item = cx.input("ITEM");
+    const Variable& list = listOf(cx);
+    // Cast.compare, so that 123 and "123" are the same item.
+    for (std::size_t i = 0; i < list.list.size(); i++) {
+        if (Value::compare(list.list[i], item) == 0) return Value::number(static_cast<double>(i + 1));
+    }
+    return Value::number(0);
+}
+
+Value dataLengthOfList(PrimitiveContext& cx) {
+    return Value::number(static_cast<double>(listOf(cx).list.size()));
+}
+
+Value dataListContainsItem(PrimitiveContext& cx) {
+    const Value item = cx.input("ITEM");
+    const Variable& list = listOf(cx);
+    for (const Value& v : list.list) {
+        if (Value::compare(v, item) == 0) return Value::boolean(true);
+    }
+    return Value::boolean(false);
+}
+
 // ----------------------------------------------------------------- operators
 
 Value operatorAdd(PrimitiveContext& cx) {
@@ -338,6 +503,21 @@ using Kind = Primitive::Kind;
 
 const Primitive kPrimitives[] = {
     {"event_whenflagclicked", Kind::Hat, nullptr, nullptr, true},
+
+    {"event_whenbroadcastreceived", Kind::Hat, nullptr, nullptr, true},
+    {"event_broadcast", Kind::Command, &eventBroadcast, nullptr, false},
+    {"event_broadcastandwait", Kind::Command, &eventBroadcastAndWait, nullptr, false},
+
+    {"data_listcontents", Kind::Reporter, nullptr, &dataListContents, false},
+    {"data_addtolist", Kind::Command, &dataAddToList, nullptr, false},
+    {"data_deleteoflist", Kind::Command, &dataDeleteOfList, nullptr, false},
+    {"data_deletealloflist", Kind::Command, &dataDeleteAllOfList, nullptr, false},
+    {"data_insertatlist", Kind::Command, &dataInsertAtList, nullptr, false},
+    {"data_replaceitemoflist", Kind::Command, &dataReplaceItemOfList, nullptr, false},
+    {"data_itemoflist", Kind::Reporter, nullptr, &dataItemOfList, false},
+    {"data_itemnumoflist", Kind::Reporter, nullptr, &dataItemNumOfList, false},
+    {"data_lengthoflist", Kind::Reporter, nullptr, &dataLengthOfList, false},
+    {"data_listcontainsitem", Kind::Reporter, nullptr, &dataListContainsItem, false},
 
     {"control_repeat", Kind::Command, &controlRepeat, nullptr, false},
     {"control_repeat_until", Kind::Command, &controlRepeatUntil, nullptr, false},

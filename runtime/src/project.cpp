@@ -1,4 +1,5 @@
 #include "lithium/project.h"
+#include "lithium/text.h"
 
 namespace lithium {
 
@@ -48,10 +49,11 @@ void BlockContainer::setInput(BlockIndex block, std::string name, Input input) {
     inputs.emplace_back(std::move(name), std::move(input));
 }
 
-void BlockContainer::setInputLiteral(BlockIndex block, std::string name, Value value) {
+void BlockContainer::setInputLiteral(BlockIndex block, std::string name, Value value, std::string id) {
     Input input;
     input.kind = Input::Kind::Literal;
     input.literal = std::move(value);
+    input.id = std::move(id);
     setInput(block, std::move(name), std::move(input));
 }
 
@@ -114,7 +116,31 @@ BlockIndex BlockContainer::getBranch(BlockIndex block, int branchNum) const {
 }
 
 Variable& Target::addVariable(std::string id, std::string name, Value initial) {
-    variables.push_back(Variable{std::move(id), std::move(name), std::move(initial)});
+    Variable v;
+    v.id = std::move(id);
+    v.name = std::move(name);
+    v.value = std::move(initial);
+    variables.push_back(std::move(v));
+    return variables.back();
+}
+
+Variable& Target::addList(std::string id, std::string name, std::vector<Value> items) {
+    Variable v;
+    v.id = std::move(id);
+    v.name = std::move(name);
+    v.type = Variable::Type::List;
+    v.list = std::move(items);
+    variables.push_back(std::move(v));
+    return variables.back();
+}
+
+Variable& Target::addBroadcast(std::string id, std::string name) {
+    Variable v;
+    v.id = std::move(id);
+    v.name = name;
+    v.type = Variable::Type::Broadcast;
+    v.value = Value::string(std::move(name));
+    variables.push_back(std::move(v));
     return variables.back();
 }
 
@@ -130,13 +156,13 @@ Variable* Target::lookupVariableById(std::string_view id) {
     return nullptr;
 }
 
-Variable* Target::lookupVariableByName(std::string_view name) {
+Variable* Target::lookupVariableByNameAndType(std::string_view name, Variable::Type type) {
     for (auto& v : variables) {
-        if (v.name == name) return &v;
+        if (v.type == type && v.name == name) return &v;
     }
     if (!isStage && stage_ != nullptr) {
         for (auto& v : stage_->variables) {
-            if (v.name == name) return &v;
+            if (v.type == type && v.name == name) return &v;
         }
     }
     return nullptr;
@@ -144,8 +170,25 @@ Variable* Target::lookupVariableByName(std::string_view name) {
 
 Variable& Target::lookupOrCreateVariable(std::string_view id, std::string_view name) {
     if (Variable* v = lookupVariableById(id)) return *v;
-    if (Variable* v = lookupVariableByName(name)) return *v;
+    if (Variable* v = lookupVariableByNameAndType(name, Variable::Type::Scalar)) return *v;
     return addVariable(std::string(id), std::string(name), Value::number(0.0));
+}
+
+Variable& Target::lookupOrCreateList(std::string_view id, std::string_view name) {
+    if (Variable* v = lookupVariableById(id)) return *v;
+    if (Variable* v = lookupVariableByNameAndType(name, Variable::Type::List)) return *v;
+    return addList(std::string(id), std::string(name), {});
+}
+
+Variable* Target::lookupBroadcastMsg(std::string_view id, std::string_view name) {
+    if (!id.empty()) return lookupVariableById(id);
+    if (!name.empty()) {
+        const std::string wanted = jsToLowerCase(std::string(name));
+        for (auto& v : variables) {
+            if (v.type == Variable::Type::Broadcast && jsToLowerCase(v.name) == wanted) return &v;
+        }
+    }
+    return nullptr;
 }
 
 Project::Project() {
