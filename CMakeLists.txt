@@ -30,7 +30,11 @@ target_compile_options(lithium_runtime PRIVATE
 if(EMSCRIPTEN)
     add_executable(lithium_wasm ${LITHIUM_RUNTIME_SOURCES})
     target_include_directories(lithium_wasm PRIVATE runtime/include runtime/src third_party)
+    # The loader reports errors via exceptions (nlohmann/json); Emscripten
+    # builds without exception support by default, so a throw would abort.
+    target_compile_options(lithium_wasm PRIVATE -fwasm-exceptions)
     target_link_options(lithium_wasm PRIVATE
+        -fwasm-exceptions
         --no-entry
         -sMODULARIZE=1
         -sEXPORT_NAME=createLithium
