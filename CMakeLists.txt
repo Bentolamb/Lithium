@@ -43,8 +43,9 @@ if(EMSCRIPTEN)
         -sMODULARIZE=1
         -sEXPORT_NAME=createLithium
         -sENVIRONMENT=web,node
-        "-sEXPORTED_FUNCTIONS=_lithium_runtime_create,_lithium_runtime_destroy,_lithium_version,_lithium_load_builtin,_lithium_load_sb3_json,_lithium_get_load_log,_lithium_dump_state,_lithium_set_renderer_attached,_lithium_set_random_seed,_lithium_set_turbo_mode,_lithium_set_compatibility_mode,_lithium_use_manual_clock,_lithium_advance_clock,_lithium_green_flag,_lithium_stop_all,_lithium_runtime_step,_lithium_runtime_frame_count,_lithium_thread_count,_lithium_get_variable_number,_lithium_get_variable_string,_lithium_get_position,_malloc,_free"
-        "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,getValue")
+        "-sEXPORTED_FUNCTIONS=_lithium_runtime_create,_lithium_runtime_destroy,_lithium_version,_lithium_load_builtin,_lithium_load_sb3_json,_lithium_get_load_log,_lithium_dump_state,_lithium_set_renderer_attached,_lithium_set_random_seed,_lithium_set_turbo_mode,_lithium_set_compatibility_mode,_lithium_use_manual_clock,_lithium_advance_clock,_lithium_green_flag,_lithium_stop_all,_lithium_runtime_step,_lithium_runtime_frame_count,_lithium_thread_count,_lithium_get_variable_number,_lithium_get_variable_string,_lithium_get_position,_lithium_set_host_callback,_lithium_asset_manifest,_lithium_set_costume_skin,_lithium_sync_renderer,_lithium_post_key,_lithium_post_mouse,_lithium_post_answer,_lithium_sound_finished,_lithium_take_redraw,_malloc,_free"
+        "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,getValue,setValue,addFunction,removeFunction,HEAPF64,HEAP32,HEAPU8"
+        -sALLOW_TABLE_GROWTH=1)
 endif()
 
 # Native command-line runner, used by the differential tests (tests/diff).
@@ -60,7 +61,7 @@ if(LITHIUM_BUILD_TESTS AND NOT EMSCRIPTEN)
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
         GIT_TAG v3.5.4)
     FetchContent_MakeAvailable(Catch2)
-    add_executable(lithium_tests tests/runtime_test.cpp tests/value_test.cpp tests/scheduler_test.cpp tests/sb3_test.cpp)
+    add_executable(lithium_tests tests/runtime_test.cpp tests/value_test.cpp tests/scheduler_test.cpp tests/sb3_test.cpp tests/host_test.cpp)
     target_include_directories(lithium_tests PRIVATE third_party)
     target_compile_definitions(lithium_tests PRIVATE LITHIUM_TEST_DIR="${CMAKE_SOURCE_DIR}/tests")
     target_link_libraries(lithium_tests PRIVATE lithium_runtime Catch2::Catch2WithMain)

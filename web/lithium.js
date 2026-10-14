@@ -19,7 +19,24 @@ export async function loadRuntime(factory) {
         renderer: c('set_renderer_attached', null, ['number', 'number']),
         threads: c('thread_count', 'number', ['number']),
         dump: c('dump_state', 'string', ['number']),
+        setHost: c('set_host_callback', null, ['number', 'number']),
+        manifest: c('asset_manifest', 'string', ['number']),
+        setSkin: c('set_costume_skin', null, ['number', 'number', 'number', 'number']),
+        sync: c('sync_renderer', null, ['number']),
+        key: c('post_key', null, ['number', 'string', 'number']),
+        mouse: c('post_mouse', null, ['number', 'number', 'number', 'number', 'number', 'number']),
+        answer: c('post_answer', null, ['number', 'string']),
+        soundDone: c('sound_finished', null, ['number', 'number']),
     };
+    // Typed views into WASM memory for the host callback (heap views are re-read
+    // on every call because memory growth replaces the underlying buffer).
+    const mem = {
+        string: p => m.UTF8ToString(p),
+        f64: (p, n) => new Float64Array(m.HEAPF64.buffer, p, n),
+        i32: (p, n) => new Int32Array(m.HEAP32.buffer, p, n),
+        setF64: (p, arr) => { new Float64Array(m.HEAPF64.buffer, p, arr.length).set(arr); },
+    };
+    let hostFn = 0;
     const rt = f.create();
     // The browser has a stage to draw on, so motion blocks request redraws.
     f.renderer(rt, 1);
@@ -34,6 +51,21 @@ export async function loadRuntime(factory) {
         setCompat(on) { f.compat(rt, on ? 1 : 0); },
         threadCount() { return f.threads(rt); },
         state() { return JSON.parse(f.dump(rt)); },
+        mem,
+        // handler(op, a, b, c, d, p) -> number; see runtime/include/lithium/c_api.h
+        setHost(handler) {
+            if (hostFn) m.removeFunction(hostFn);
+            hostFn = handler ? m.addFunction((op, a, b, c, d, p) => handler(op, a, b, c, d, p), 'diddddi') : 0;
+            f.setHost(rt, hostFn);
+        },
+        assetManifest() { return JSON.parse(f.manifest(rt)); },
+        setCostumeSkin(t, c, skin) { f.setSkin(rt, t, c, skin); },
+        syncRenderer() { f.sync(rt); },
+        postKey(key, down) { f.key(rt, key, down ? 1 : 0); },
+        // flags: 1 x, 2 y, 4 down-changed, 8 down, 16 dragged
+        postMouse(flags, x, y, w, h) { f.mouse(rt, flags, x, y, w, h); },
+        postAnswer(text) { f.answer(rt, text); },
+        soundFinished(id) { f.soundDone(rt, id); },
     };
 }
 
@@ -74,4 +106,11 @@ export async function readZipEntry(buffer, wanted) {
 export async function readSb3ProjectJson(file) {
     const bytes = await readZipEntry(await file.arrayBuffer(), 'project.json');
     return new TextDecoder().decode(bytes);
+}
+
+// Reads a whole .sb3: project.json text and the zip buffer (for assets).
+export async function readSb3(file) {
+    const buffer = await file.arrayBuffer();
+    const bytes = await readZipEntry(buffer, 'project.json');
+    return { json: new TextDecoder().decode(bytes), buffer };
 }

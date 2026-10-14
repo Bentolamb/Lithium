@@ -35,3 +35,9 @@ td:last-child { text-align: right; word-break: break-all; }
 #sprites td:not(:first-child), #sprites th:not(:first-child) { text-align: right; }
 pre { margin: 0; white-space: pre-wrap; color: var(--muted); font-size: 12px; max-height: 140px; overflow: auto; }
 pre.error { color: var(--stop); }
+
+.stage-wrap { position: relative; }
+.ask { display: none; gap: 4px; align-items: center; position: absolute; left: 8px; right: 8px; bottom: 34px;
+       background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.ask label { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }

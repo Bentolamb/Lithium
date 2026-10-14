@@ -53,6 +53,51 @@ const char* lithium_get_variable_string(lithium_runtime* rt, const char* target,
 const char* lithium_dump_state(lithium_runtime* rt);
 int32_t lithium_get_position(lithium_runtime* rt, const char* target, double* x, double* y);
 
+/* ---- Host (renderer / audio / input) ------------------------------------
+ * The platform implements one callback; the runtime calls it for every
+ * drawing, geometry, pen, bubble and sound request. Signature:
+ *   double cb(int op, double a, double b, double c, double d, const void* p)
+ * Ops (a,b,c,d are numbers, p is a pointer into WASM memory when noted):
+ *    1 create drawable (a=layer group) -> id        2 destroy (a=id)
+ *    3 skin (a=id, b=skinId)                        4 position (a=id, b=x, c=y)
+ *    5 direction/scale (a=id, b=dir, c=sx, d=sy)    6 visible (a=id, b=0/1)
+ *    7 effect (a=id, b=value, p=char* name)
+ *    8 order (a=id, b=order, c=layerGroup + 16*relative, d=min) -> new order
+ *    9 fenced position (a=id, b=x, c=y; writes double[2] at p)
+ *   10 skin size (a=id; writes double[2] at p)
+ *   11 bounds (a=id; writes double[4] left,right,top,bottom at p) -> 0/1
+ *   12 point touches drawable (a=id, b=x, c=y) -> 0/1
+ *   13 touching drawables (a=id, b=count, p=int32[count]) -> 0/1
+ *   14 touching color (a=id, p=int32[3]) -> 0/1
+ *   15 color touching color (a=id, p=int32[6] = target rgb, mask rgb) -> 0/1
+ *   16 pick (a=canvas x, b=canvas y) -> drawable id or -1
+ *   17 pen clear       18 pen stamp (a=id)
+ *   19 pen point (p=double[7]: rgba, diameter, x, y)
+ *   20 pen line  (p=double[9]: rgba, diameter, x0, y0, x1, y1)
+ *   21 bubble (a=target uid, b=drawable id, c=1 if "think", p=char* text)
+ *   22 ask (a=1 show / 0 hide, p=char* question)
+ *   23 play sound (a=target uid, b=sound index, c=request id (0 = fire and forget),
+ *      d=index of the sprite among the originals that owns the sounds)
+ *   24 stop sound (a=uid, b=index)    25 stop all sounds (a=uid, -1 = every target)
+ *   26 sound effects (a=uid, b=volume, c=pitch, d=pan)
+ *   27 target removed (a=uid)
+ */
+typedef double (*lithium_host_callback)(int32_t op, double a, double b, double c, double d, const void* p);
+void lithium_set_host_callback(lithium_runtime* rt, lithium_host_callback cb);
+/* JSON: [{"name":..., "costumes":[{name,md5ext,dataFormat,rotationCenterX,
+ * rotationCenterY,bitmapResolution}], "sounds":[{name,md5ext,dataFormat,rate,
+ * sampleCount}]}] for every original target, in project order. */
+const char* lithium_asset_manifest(lithium_runtime* rt);
+void lithium_set_costume_skin(lithium_runtime* rt, int32_t target_index, int32_t costume_index, int32_t skin_id);
+void lithium_sync_renderer(lithium_runtime* rt);
+/* Input. */
+void lithium_post_key(lithium_runtime* rt, const char* key, int32_t is_down);
+void lithium_post_mouse(lithium_runtime* rt, int32_t flags, double x, double y, double canvas_w, double canvas_h);
+void lithium_post_answer(lithium_runtime* rt, const char* answer);
+void lithium_sound_finished(lithium_runtime* rt, int32_t request_id);
+/* 1 when a redraw is wanted (resets the flag). */
+int32_t lithium_take_redraw(lithium_runtime* rt);
+
 #ifdef __cplusplus
 }
 #endif

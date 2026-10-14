@@ -1,9 +1,10 @@
-import { loadRuntime, readSb3ProjectJson } from './lithium.js';
+import { loadRuntime, readSb3 } from './lithium.js';
+import { StageHost } from './stage.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
-const ctx = stage.getContext('2d');
 let lith = null;
+let host = null;
 let steps = 0;
 let lastStatus = 0;
 let lastTable = 0;
@@ -25,10 +26,13 @@ function enableControls(on) {
 async function openFile(file) {
     if (!lith || !file) return;
     try {
-        const json = await readSb3ProjectJson(file);
+        const { json, buffer } = await readSb3(file);
         const r = lith.loadProjectJson(json);
         setLog(r.log, !r.ok);
-        if (r.ok) afterLoad(file.name);
+        if (r.ok) {
+            await host.loadAssets(buffer);
+            afterLoad(file.name);
+        }
     } catch (e) {
         setLog(String(e.message || e), true);
     }
@@ -58,6 +62,23 @@ $('flag').onclick = () => lith.greenFlag();
 $('stop').onclick = () => { lith.stopAll(); refresh(true); };
 $('turbo').onchange = e => lith.setTurbo(e.target.checked);
 $('compat').onchange = e => lith.setCompat(e.target.checked);
+// ---- input to the project -------------------------------------------------
+
+const typing = e => e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA';
+document.addEventListener('keydown', e => {
+    if (typing(e) || !lith) return;
+    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+    lith.postKey(e.key, true);
+});
+document.addEventListener('keyup', e => { if (!typing(e) && lith) lith.postKey(e.key, false); });
+function mouseData(e, flags) {
+    const r = stage.getBoundingClientRect();
+    lith.postMouse(flags | 1 | 2, e.clientX - r.left, e.clientY - r.top, r.width, r.height);
+}
+stage.addEventListener('mousemove', e => lith && mouseData(e, 0));
+stage.addEventListener('mousedown', e => lith && mouseData(e, 4 | 8));
+window.addEventListener('mouseup', e => { if (lith) mouseData(e, 4); });
+
 document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     if (e.key === 'Enter' && !$('flag').disabled) lith.greenFlag();
@@ -65,31 +86,6 @@ document.addEventListener('keydown', e => {
 });
 
 // ---- drawing ------------------------------------------------------------
-
-function drawStage(state) {
-    ctx.clearRect(0, 0, stage.width, stage.height);
-    ctx.strokeStyle = '#e3e6ec';
-    ctx.beginPath();
-    ctx.moveTo(240, 0); ctx.lineTo(240, 360); ctx.moveTo(0, 180); ctx.lineTo(480, 180);
-    ctx.stroke();
-    for (const t of state.targets) {
-        if (t.isStage || !t.visible) continue;
-        const scale = (Number(t.size) || 100) / 100;
-        ctx.save();
-        ctx.translate(240 + Number(t.x), 180 - Number(t.y));
-        ctx.rotate((Number(t.direction) || 0) * Math.PI / 180);  // 0 = up, 90 = right
-        ctx.scale(scale, scale);
-        ctx.fillStyle = '#2a6df4';
-        ctx.beginPath();
-        ctx.moveTo(0, -14); ctx.lineTo(10, 10); ctx.lineTo(0, 5); ctx.lineTo(-10, 10);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-        ctx.fillStyle = '#667085';
-        ctx.font = '11px system-ui, sans-serif';
-        ctx.fillText(t.name, 240 + Number(t.x) + 12, 180 - Number(t.y) - 10);
-    }
-}
 
 function row(cells) {
     const tr = document.createElement('tr');
@@ -116,7 +112,6 @@ function refresh(force) {
     if (!lith) return;
     const now = performance.now();
     const state = lith.state();
-    drawStage(state);
     if (force || now - lastTable > 100) { drawTables(state); lastTable = now; }
     if (force || now - lastStatus > 250) {
         $('status').textContent = `${steps} frames · ${state.threads} running · ${stepsPerSecond} steps/s`;
@@ -141,6 +136,7 @@ function frame(now) {
         }
         refresh(false);
     }
+    if (host) host.draw();
     requestAnimationFrame(frame);
 }
 
@@ -148,7 +144,9 @@ function frame(now) {
     try {
         lith = await loadRuntime(window.createLithium);
         $('status').textContent = 'runtime ' + lith.version;
-        drawStage({ targets: [] });
+        host = new StageHost(stage, lith);
+        lith.setHost((op, a, b, c, d, p) => host.handle(op, a, b, c, d, p));
+        window.lithium = { lith, host };  // for tests and the console
         requestAnimationFrame(frame);
     } catch (e) {
         $('status').textContent = 'runtime failed to load';
