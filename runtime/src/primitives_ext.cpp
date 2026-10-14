@@ -177,21 +177,21 @@ double clampEffect(const std::string& effect, double value) {
 
 void lookChangeEffect(PrimitiveContext& cx) {
     const std::string effect = jsToLowerCase(fieldString(cx, "EFFECT"));
-    const double change = cx.input("CHANGE").toNumber();
+    const double change = cx.inputNumber("CHANGE");
     double* slot = cx.target().effects.byName(effect);
     if (slot == nullptr) return;
     cx.runtime.setEffect(cx.target(), effect, clampEffect(effect, change + *slot));
 }
 void lookSetEffect(PrimitiveContext& cx) {
     const std::string effect = jsToLowerCase(fieldString(cx, "EFFECT"));
-    const double value = clampEffect(effect, cx.input("VALUE").toNumber());
+    const double value = clampEffect(effect, cx.inputNumber("VALUE"));
     cx.runtime.setEffect(cx.target(), effect, value);
 }
 void lookClearEffects(PrimitiveContext& cx) { cx.runtime.clearEffects(cx.target()); }
 void lookChangeSize(PrimitiveContext& cx) {
-    cx.runtime.setSize(cx.target(), cx.target().size + cx.input("CHANGE").toNumber());
+    cx.runtime.setSize(cx.target(), cx.target().size + cx.inputNumber("CHANGE"));
 }
-void lookSetSize(PrimitiveContext& cx) { cx.runtime.setSize(cx.target(), cx.input("SIZE").toNumber()); }
+void lookSetSize(PrimitiveContext& cx) { cx.runtime.setSize(cx.target(), cx.inputNumber("SIZE")); }
 void lookGoToFrontBack(PrimitiveContext& cx) {
     if (cx.target().isStage) return;
     if (fieldString(cx, "FRONT_BACK") == "front") cx.runtime.goToFront(cx.target());
@@ -199,7 +199,7 @@ void lookGoToFrontBack(PrimitiveContext& cx) {
 }
 void lookGoForwardBackward(PrimitiveContext& cx) {
     if (cx.target().isStage) return;
-    const double n = cx.input("NUM").toNumber();
+    const double n = cx.inputNumber("NUM");
     if (fieldString(cx, "FORWARD_BACKWARD") == "forward") cx.runtime.goForwardLayers(cx.target(), n);
     else cx.runtime.goBackwardLayers(cx.target(), n);
 }
@@ -272,12 +272,12 @@ void glide(PrimitiveContext& cx, double secs, double x, double y) {
 
 void motionGlide(PrimitiveContext& cx) {
     // The arguments are evaluated on every re-execution, like scratch-vm.
-    const double secs = cx.input("SECS").toNumber(), x = cx.input("X").toNumber(), y = cx.input("Y").toNumber();
+    const double secs = cx.inputNumber("SECS"), x = cx.inputNumber("X"), y = cx.inputNumber("Y");
     glide(cx, secs, x, y);
 }
 void motionGlideTo(PrimitiveContext& cx) {
     double x, y;
-    const double secs = cx.input("SECS").toNumber();
+    const double secs = cx.inputNumber("SECS");
     if (targetXY(cx, cx.input("TO"), &x, &y)) glide(cx, secs, x, y);
 }
 
@@ -491,7 +491,7 @@ Value sensingOf(PrimitiveContext& cx) {
 
 Value hatGreaterThan(PrimitiveContext& cx) {
     const std::string option = jsToLowerCase(fieldString(cx, "WHENGREATERTHANMENU"));
-    const double value = cx.input("VALUE").toNumber();
+    const double value = cx.inputNumber("VALUE");
     if (option == "timer") return Value::boolean(cx.runtime.projectTimer() > value);
     return Value::boolean(false);  // loudness: no audio engine
 }
@@ -532,7 +532,7 @@ void soundStopAll(PrimitiveContext& cx) { cx.runtime.stopAllSounds(); }
 
 void soundUpdateEffect(PrimitiveContext& cx, bool change) {
     const std::string effect = jsToLowerCase(fieldString(cx, "EFFECT"));
-    const double value = cx.input("VALUE").toNumber();
+    const double value = cx.inputNumber("VALUE");
     double* slot = effect == "pitch" ? &cx.target().soundPitch : effect == "pan" ? &cx.target().soundPan : nullptr;
     if (slot == nullptr) return;
     *slot = change ? *slot + value : value;
@@ -553,8 +553,8 @@ void soundUpdateVolume(PrimitiveContext& cx, double volume) {
     cx.runtime.syncSoundState(cx.target());
     cx.runtime.waitForPromise(cx.thread, Runtime::PromiseKind::Immediate);
 }
-void soundSetVolume(PrimitiveContext& cx) { soundUpdateVolume(cx, cx.input("VOLUME").toNumber()); }
-void soundChangeVolume(PrimitiveContext& cx) { soundUpdateVolume(cx, cx.input("VOLUME").toNumber() + cx.target().volume); }
+void soundSetVolume(PrimitiveContext& cx) { soundUpdateVolume(cx, cx.inputNumber("VOLUME")); }
+void soundChangeVolume(PrimitiveContext& cx) { soundUpdateVolume(cx, cx.inputNumber("VOLUME") + cx.target().volume); }
 Value soundVolume(PrimitiveContext& cx) { return Value::number(cx.target().volume); }
 
 // ------------------------------------------------------------------------ pen
@@ -629,17 +629,17 @@ void penSetColorToColor(PrimitiveContext& cx) {
     updatePenColor(s);
 }
 void penChangeColorParam(PrimitiveContext& cx) {
-    setOrChangeColorParam(cx.input("COLOR_PARAM").toString(), cx.input("VALUE").toNumber(), cx.target().pen, true);
+    setOrChangeColorParam(cx.input("COLOR_PARAM").toString(), cx.inputNumber("VALUE"), cx.target().pen, true);
 }
 void penSetColorParam(PrimitiveContext& cx) {
-    setOrChangeColorParam(cx.input("COLOR_PARAM").toString(), cx.input("VALUE").toNumber(), cx.target().pen, false);
+    setOrChangeColorParam(cx.input("COLOR_PARAM").toString(), cx.inputNumber("VALUE"), cx.target().pen, false);
 }
 void penChangeSize(PrimitiveContext& cx) {
     PenState& s = cx.target().pen;
-    s.diameter = clampd(s.diameter + cx.input("SIZE").toNumber(), 1, 1200);
+    s.diameter = clampd(s.diameter + cx.inputNumber("SIZE"), 1, 1200);
 }
 void penSetSize(PrimitiveContext& cx) {
-    cx.target().pen.diameter = clampd(cx.input("SIZE").toNumber(), 1, 1200);
+    cx.target().pen.diameter = clampd(cx.inputNumber("SIZE"), 1, 1200);
 }
 void penSetShade(PenState& s, double shade) {
     shade = std::fmod(shade, 200.0);
@@ -647,20 +647,20 @@ void penSetShade(PenState& s, double shade) {
     s.shade = shade;
     legacyUpdatePenColor(s);
 }
-void penSetShadeTo(PrimitiveContext& cx) { penSetShade(cx.target().pen, cx.input("SHADE").toNumber()); }
+void penSetShadeTo(PrimitiveContext& cx) { penSetShade(cx.target().pen, cx.inputNumber("SHADE")); }
 void penChangeShadeBy(PrimitiveContext& cx) {
     PenState& s = cx.target().pen;
-    penSetShade(s, s.shade + cx.input("SHADE").toNumber());
+    penSetShade(s, s.shade + cx.inputNumber("SHADE"));
 }
 void penSetHueTo(PrimitiveContext& cx) {
     PenState& s = cx.target().pen;
-    setOrChangeColorParam("color", cx.input("HUE").toNumber() / 2, s, false);
+    setOrChangeColorParam("color", cx.inputNumber("HUE") / 2, s, false);
     setOrChangeColorParam("transparency", 0, s, false);
     legacyUpdatePenColor(s);
 }
 void penChangeHueBy(PrimitiveContext& cx) {
     PenState& s = cx.target().pen;
-    setOrChangeColorParam("color", cx.input("HUE").toNumber() / 2, s, true);
+    setOrChangeColorParam("color", cx.inputNumber("HUE") / 2, s, true);
     legacyUpdatePenColor(s);
 }
 

@@ -34,6 +34,9 @@ struct Input {
     };
     Kind kind = Kind::None;
     Value literal;
+    // Cast.toNumber(literal), computed on first use (literals are usually numeric strings).
+    mutable double literalNumber = 0.0;
+    mutable bool literalNumberSet = false;
     std::string id;  // broadcast message id for [11, name, id] primitives
     BlockIndex block = kNoBlock;
 };

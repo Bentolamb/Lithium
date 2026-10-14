@@ -38,7 +38,7 @@ Value evaluateReporter(const PrimitiveContext& parent, BlockIndex index) {
 // ------------------------------------------------------------------- control
 
 void controlRepeat(PrimitiveContext& cx) {
-    const double times = jsRound(cx.input("TIMES").toNumber());
+    const double times = jsRound(cx.inputNumber("TIMES"));
     ExecutionContext& ec = cx.stackFrame();
     // Initialize the loop.
     if (!ec.loopCounter) ec.loopCounter = times;
@@ -60,7 +60,7 @@ void controlForever(PrimitiveContext& cx) { cx.startBranch(1, true); }
 
 void controlWait(PrimitiveContext& cx) {
     if (cx.stackTimerNeedsInit()) {
-        const double duration = std::max(0.0, 1000.0 * cx.input("DURATION").toNumber());
+        const double duration = std::max(0.0, 1000.0 * cx.inputNumber("DURATION"));
         cx.startStackTimer(duration);
         cx.runtime.requestRedraw();
         cx.yield();
@@ -181,7 +181,7 @@ void dataChangeVariableBy(PrimitiveContext& cx) {
     if (field == nullptr) return;
     Variable& variable = cx.target().lookupOrCreateVariable(field->id, field->value.toString());
     const double casted = variable.value.toNumber();
-    const double delta = cx.input("VALUE").toNumber();
+    const double delta = cx.inputNumber("VALUE");
     variable.value = Value::number(casted + delta);
 }
 
@@ -359,16 +359,16 @@ Value dataListContainsItem(PrimitiveContext& cx) {
 // ----------------------------------------------------------------- operators
 
 Value operatorAdd(PrimitiveContext& cx) {
-    return Value::number(cx.input("NUM1").toNumber() + cx.input("NUM2").toNumber());
+    return Value::number(cx.inputNumber("NUM1") + cx.inputNumber("NUM2"));
 }
 Value operatorSubtract(PrimitiveContext& cx) {
-    return Value::number(cx.input("NUM1").toNumber() - cx.input("NUM2").toNumber());
+    return Value::number(cx.inputNumber("NUM1") - cx.inputNumber("NUM2"));
 }
 Value operatorMultiply(PrimitiveContext& cx) {
-    return Value::number(cx.input("NUM1").toNumber() * cx.input("NUM2").toNumber());
+    return Value::number(cx.inputNumber("NUM1") * cx.inputNumber("NUM2"));
 }
 Value operatorDivide(PrimitiveContext& cx) {
-    return Value::number(cx.input("NUM1").toNumber() / cx.input("NUM2").toNumber());
+    return Value::number(cx.inputNumber("NUM1") / cx.inputNumber("NUM2"));
 }
 Value operatorLt(PrimitiveContext& cx) {
     return Value::boolean(Value::compare(cx.input("OPERAND1"), cx.input("OPERAND2")) < 0);
@@ -423,15 +423,15 @@ double roundTo10(double x) {
 }
 
 Value operatorMod(PrimitiveContext& cx) {
-    const double n = cx.input("NUM1").toNumber();
-    const double modulus = cx.input("NUM2").toNumber();
+    const double n = cx.inputNumber("NUM1");
+    const double modulus = cx.inputNumber("NUM2");
     double result = std::fmod(n, modulus);  // same as JavaScript's %
     // Scratch mod uses floored division instead of truncated division.
     if (result / modulus < 0) result += modulus;
     return Value::number(result);
 }
 Value operatorRound(PrimitiveContext& cx) {
-    return Value::number(jsRound(cx.input("NUM").toNumber()));
+    return Value::number(jsRound(cx.inputNumber("NUM")));
 }
 Value operatorRandom(PrimitiveContext& cx) {
     const Value from = cx.input("FROM");
@@ -448,7 +448,7 @@ Value operatorRandom(PrimitiveContext& cx) {
     return Value::number(cx.runtime.random() * (high - low) + low);
 }
 Value operatorLetterOf(PrimitiveContext& cx) {
-    const double index = cx.input("LETTER").toNumber() - 1;
+    const double index = cx.inputNumber("LETTER") - 1;
     const std::u16string str = utf8ToUtf16(cx.input("STRING").toString());
     if (index < 0 || index >= static_cast<double>(str.size())) return Value::string("");
     return Value::string(utf16ToUtf8(std::u16string(1, str[static_cast<std::size_t>(index)])));
@@ -464,7 +464,7 @@ Value operatorContains(PrimitiveContext& cx) {
 Value operatorMathop(PrimitiveContext& cx) {
     const Field* f = cx.field("OPERATOR");
     const std::string op = asciiLowerCopy(f ? f->value.toString() : std::string());
-    const double n = cx.input("NUM").toNumber();
+    const double n = cx.inputNumber("NUM");
     constexpr double kPiLocal = 3.141592653589793238462643383279502884;
     if (op == "abs") return Value::number(std::fabs(n));
     if (op == "floor") return Value::number(std::floor(n));
@@ -506,38 +506,38 @@ double limitPrecision(double coordinate) {
 
 void setTargetDirection(PrimitiveContext& cx, double direction) { cx.runtime.setDirection(cx.target(), direction); }
 void motionTurnRight(PrimitiveContext& cx) {
-    const double degrees = cx.input("DEGREES").toNumber();
+    const double degrees = cx.inputNumber("DEGREES");
     setTargetDirection(cx, cx.target().direction + degrees);
 }
 void motionTurnLeft(PrimitiveContext& cx) {
-    const double degrees = cx.input("DEGREES").toNumber();
+    const double degrees = cx.inputNumber("DEGREES");
     setTargetDirection(cx, cx.target().direction - degrees);
 }
 void motionPointInDirection(PrimitiveContext& cx) {
-    setTargetDirection(cx, cx.input("DIRECTION").toNumber());
+    setTargetDirection(cx, cx.inputNumber("DIRECTION"));
 }
 
 void motionMoveSteps(PrimitiveContext& cx) {
-    const double steps = cx.input("STEPS").toNumber();
+    const double steps = cx.inputNumber("STEPS");
     const double radians = degToRad(90.0 - cx.target().direction);
     const double dx = steps * std::cos(radians);
     const double dy = steps * std::sin(radians);
     setTargetXY(cx, cx.target().x + dx, cx.target().y + dy);
 }
 void motionGoToXY(PrimitiveContext& cx) {
-    setTargetXY(cx, cx.input("X").toNumber(), cx.input("Y").toNumber());
+    setTargetXY(cx, cx.inputNumber("X"), cx.inputNumber("Y"));
 }
 void motionChangeXBy(PrimitiveContext& cx) {
-    setTargetXY(cx, cx.target().x + cx.input("DX").toNumber(), cx.target().y);
+    setTargetXY(cx, cx.target().x + cx.inputNumber("DX"), cx.target().y);
 }
 void motionSetX(PrimitiveContext& cx) {
-    setTargetXY(cx, cx.input("X").toNumber(), cx.target().y);
+    setTargetXY(cx, cx.inputNumber("X"), cx.target().y);
 }
 void motionChangeYBy(PrimitiveContext& cx) {
-    setTargetXY(cx, cx.target().x, cx.target().y + cx.input("DY").toNumber());
+    setTargetXY(cx, cx.target().x, cx.target().y + cx.inputNumber("DY"));
 }
 void motionSetY(PrimitiveContext& cx) {
-    setTargetXY(cx, cx.target().x, cx.input("Y").toNumber());
+    setTargetXY(cx, cx.target().x, cx.inputNumber("Y"));
 }
 Value motionXPosition(PrimitiveContext& cx) {
     return Value::number(limitPrecision(cx.target().x));
@@ -643,6 +643,24 @@ Value PrimitiveContext::input(std::string_view name) const {
             break;
     }
     return Value::string("");
+}
+
+double PrimitiveContext::inputNumber(std::string_view name) const {
+    const Input* in = block.findInput(name);
+    if (in == nullptr) return 0.0;
+    switch (in->kind) {
+        case Input::Kind::Literal:
+            if (!in->literalNumberSet) {
+                in->literalNumber = in->literal.toNumber();
+                in->literalNumberSet = true;
+            }
+            return in->literalNumber;
+        case Input::Kind::Block:
+            return evaluateReporter(*this, in->block).toNumber();
+        case Input::Kind::None:
+            break;
+    }
+    return 0.0;
 }
 
 const Field* PrimitiveContext::field(std::string_view name) const {

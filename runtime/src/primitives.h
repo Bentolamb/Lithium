@@ -33,6 +33,8 @@ public:
     // Value of an input: a literal, or the result of the nested reporter.
     // A missing input reads as "" (stands in for JavaScript's undefined).
     Value input(std::string_view name) const;
+    // input(name).toNumber() without re-parsing literal text on every execution.
+    double inputNumber(std::string_view name) const;
     const Field* field(std::string_view name) const;
 
     // Per-block state that survives re-execution of the same block.

@@ -17,13 +17,18 @@ std::vector<std::shared_ptr<Thread>> Sequencer::stepThreads() {
 
     std::size_t numActiveThreads = std::numeric_limits<std::size_t>::max();  // "Infinity"
     bool ranFirstTick = false;
+    // Reading the clock is costly (a JS call under WebAssembly), so the budget is
+    // re-checked every few passes instead of on every pass of a tight loop.
+    unsigned passes = 0;
+    bool timeLeft = true;
     std::vector<std::shared_ptr<Thread>> doneThreads;
 
     // Keep stepping while: there are active threads, the budget is not spent,
     // and (turbo mode or no primitive requested a redraw).
     while (!runtime_.threads()->empty() && numActiveThreads > 0 &&
-           (runtime_.now() - timerStart) < workTime &&
+           timeLeft &&
            (runtime_.turboMode() || !runtime_.redrawRequested())) {
+        if ((++passes & 7u) == 0) timeLeft = (runtime_.now() - timerStart) < workTime;
         numActiveThreads = 0;
         bool stoppedThread = false;
         // Hold the list we started with: stopAll() swaps the runtime's list

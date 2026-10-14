@@ -1,4 +1,6 @@
 #include "lithium/value.h"
+
+#include <cstdint>
 #include "lithium/text.h"
 
 #include <charconv>
@@ -81,6 +83,35 @@ double stringToJsNumber(std::string_view input) {
     const double inf = std::numeric_limits<double>::infinity();
     const std::string_view t = trimJsWhitespace(input);
     if (t.empty()) return 0.0;
+
+    // Fast path for plain decimals ("12", "-3.25"): at most 15 significant digits
+    // give an exactly representable mantissa, and one division by an exact power
+    // of ten is correctly rounded, so the result equals strtod's.
+    {
+        std::size_t k = 0;
+        const bool neg = t[0] == '-';
+        if (t[0] == '-' || t[0] == '+') k = 1;
+        std::uint64_t mant = 0;
+        int digits = 0, frac = 0;
+        bool dot = false, ok = k < t.size();
+        for (; k < t.size() && ok; ++k) {
+            const char c = t[k];
+            if (c >= '0' && c <= '9') {
+                mant = mant * 10 + static_cast<unsigned>(c - '0');
+                if (++digits > 15) ok = false;
+                if (dot) ++frac;
+            } else if (c == '.' && !dot) {
+                dot = true;
+            } else {
+                ok = false;
+            }
+        }
+        if (ok && digits > 0) {
+            static const double kPow10[] = {1, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15};
+            const double v = frac == 0 ? static_cast<double>(mant) : static_cast<double>(mant) / kPow10[frac];
+            return neg ? -v : v;
+        }
+    }
 
     // 0x / 0o / 0b literals (unsigned only), as in JavaScript.
     if (t.size() > 2 && t[0] == '0') {
