@@ -2,7 +2,7 @@
 // frames in scratch-vm and in Lithium; every variable, position and direction
 // must match.
 'use strict';
-const { Project, L, N, V, B, S, BC, BCX, lf, bf, stack, ARG, ARGB, CALL, CLONE } = require('./sb3gen.js');
+const { Project, L, N, V, B, S, BC, BCX, lf, bf, stack, ARG, ARGB, CALL, CLONE, MENU } = require('./sb3gen.js');
 
 const NUMS = ['', ' ', '0', '-0', '1', '-1', '2', '0.5', '-1.5', '10', '9', '100', '1e3', '1e21', '-1e21', '0x10', '0b11', '0o7',
               ' 12 ', '12abc', 'abc', '.5', '5.', '+5', 'Infinity', '-Infinity', 'NaN', 'true', '1e308', '1e-7', '123456789012345680000',
@@ -515,5 +515,169 @@ function* cloneCases() {
     }
 }
 
-function* allCases() { yield* cases(); yield* moreCases(); yield* procCases(); yield* cloneCases(); }
+
+// ---- M7: looks / sound / pen / sensing state (no renderer attached on either side) ----
+const COSTUMES = ['costume1', 'costume2', 'costume3', 'My Costume', '7'].map((name, i) => ({
+    assetId: 'cd21514d0531fdffb22204e0ec5ed84a', name, md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.svg', dataFormat: 'svg', rotationCenterX: 0, rotationCenterY: 0 }));
+const SOUNDS = ['pop', 'meow', '2'].map(name => ({ assetId: 'cd21514d0531fdffb22204e0ec5ed84a', name, md5ext: 'cd21514d0531fdffb22204e0ec5ed84a.wav',
+    dataFormat: 'wav', rate: 48000, sampleCount: 1000 }));
+const M = (op, field, value) => MENU(op, field, value);
+
+function* rendererCases() {
+    const setG = (st, name, expr) => S('data_setvariableto', { VALUE: expr }, { VARIABLE: [name, st.varId(name)] });
+    const mk = () => { const p = new Project(); p.stage.props = {}; return p; };
+    const withCostumes = (sp) => { sp.props = { ...sp.props, costumes: COSTUMES }; return sp; };
+
+    // looks: size / visibility / effects
+    for (const [i, [setSize, chg]] of [[100, 10], ['abc', 'x'], [-5, 0], [1e9, 1], [0, -200], [0.4, 0.2], [Infinity, 1], ['Infinity', '-Infinity']].entries()) {
+        const p = mk(); const st = p.stage; st.defineVar('r', 0);
+        const a = withCostumes(p.sprite('A'));
+        a.flag(S('looks_setsizeto', { SIZE: L(setSize) }), S('looks_changesizeby', { CHANGE: L(chg) }), setG(st, 'r', B('looks_size')));
+        yield { name: 'looks_size_' + i, project: p, frames: 2 };
+    }
+    for (const eff of ['COLOR', 'FISHEYE', 'WHIRL', 'PIXELATE', 'MOSAIC', 'BRIGHTNESS', 'GHOST', 'ghost', 'bogus']) {
+        for (const [v, c] of [['50', '70'], ['-300', '-5'], ['abc', '1e3'], ['150', '0']]) {
+            const p = mk(); const a = withCostumes(p.sprite('A'));
+            a.flag(S('looks_seteffectto', { VALUE: L(v) }, { EFFECT: [eff, null] }), S('looks_changeeffectby', { CHANGE: L(c) }, { EFFECT: [eff, null] }));
+            yield { name: `looks_effect_${eff}_${v}_${c}`, project: p, frames: 2 };
+        }
+    }
+    {
+        const p = mk(); const a = withCostumes(p.sprite('A'));
+        a.flag(S('looks_seteffectto', { VALUE: L(40) }, { EFFECT: ['GHOST', null] }), S('looks_seteffectto', { VALUE: L(-30) }, { EFFECT: ['BRIGHTNESS', null] }),
+               S('looks_hide'), S('looks_cleargraphiceffects'), S('looks_show'), S('looks_hide'));
+        yield { name: 'looks_clear_hide', project: p, frames: 2 };
+    }
+    // costume switching
+    const costumeArgs = ['costume2', 'COSTUME3', '3', 3, '0', '-1', '99', '1.5', 'My Costume', '7', ' ', '', 'next costume', 'previous costume', 'abc', '2abc', 'true', 'Infinity', 'NaN', '1e1', '-0'];
+    for (const [i, arg] of costumeArgs.entries()) {
+        const p = mk(); const st = p.stage; st.defineVar('n', 0); st.defineVar('nm', '');
+        const a = withCostumes(p.sprite('A'));
+        a.flag(S('looks_switchcostumeto', { COSTUME: M('looks_costume', 'COSTUME', String(arg)) }),
+               setG(st, 'n', B('looks_costumenumbername', {}, { NUMBER_NAME: ['number', null] })), setG(st, 'nm', B('looks_costumenumbername', {}, { NUMBER_NAME: ['name', null] })));
+        yield { name: 'costume_switch_' + i, project: p, frames: 2 };
+    }
+    {
+        const p = mk(); const st = p.stage; st.defineVar('n', 0); st.defineVar('nm', '');
+        const a = withCostumes(p.sprite('A'));
+        a.flag(S('control_repeat', { TIMES: N(7), SUBSTACK: stack(S('looks_nextcostume'), setG(st, 'n', B('operator_join', { STRING1: V('n'), STRING2: B('looks_costumenumbername', {}, { NUMBER_NAME: ['number', null] }) }))) }));
+        yield { name: 'costume_next_wrap', project: p, frames: 2 };
+    }
+    // backdrops + hats
+    for (const [i, arg] of ['costume2', 'next backdrop', 'previous backdrop', '2', '5', 'nope', '0'].entries()) {
+        const p = mk(); const st = p.stage; st.defineVar('hit', ''); st.defineVar('n', 0); st.defineVar('nm', '');
+        st.props = { costumes: COSTUMES };
+        const a = withCostumes(p.sprite('A')); a.defineVar('seen', 0);
+        a.flag(S('looks_switchbackdropto', { BACKDROP: M('looks_backdrops', 'BACKDROP', arg) }),
+               setG(st, 'n', B('looks_backdropnumbername', {}, { NUMBER_NAME: ['number', null] })), setG(st, 'nm', B('looks_backdropnumbername', {}, { NUMBER_NAME: ['name', null] })));
+        a.script(S('event_whenbackdropswitchesto', {}, { BACKDROP: ['costume2', null] }), a.change('seen', N(1)));
+        a.script(S('event_whenbackdropswitchesto', {}, { BACKDROP: ['costume1', null] }), a.change('seen', N(10)));
+        yield { name: 'backdrop_' + i, project: p, frames: 3 };
+    }
+    // layering (target order is compared)
+    for (const [i, op] of [['looks_gotofrontback', 'front'], ['looks_gotofrontback', 'back'], ['looks_goforwardbackwardlayers', 'forward', 1], ['looks_goforwardbackwardlayers', 'forward', 5],
+        ['looks_goforwardbackwardlayers', 'backward', 1], ['looks_goforwardbackwardlayers', 'backward', 9], ['looks_goforwardbackwardlayers', 'forward', -1], ['looks_goforwardbackwardlayers', 'forward', 'abc']].entries()) {
+        const p = mk(); const a = p.sprite('A'), b = p.sprite('B'), c = p.sprite('C'), d = p.sprite('D');
+        const [opc, kind, num] = op;
+        const field = opc === 'looks_gotofrontback' ? { FRONT_BACK: [kind, null] } : { FORWARD_BACKWARD: [kind, null] };
+        b.flag(S(opc, num === undefined ? {} : { NUM: L(num) }, field));
+        d.flag(S('looks_gotofrontback', {}, { FRONT_BACK: ['back', null] }), S('control_create_clone_of', { CLONE_OPTION: CLONE('B') }));
+        yield { name: 'layers_' + i, project: p, frames: 3 };
+    }
+    // motion extras
+    {
+        const p = mk(); const st = p.stage; st.defineVar('d', 0); st.defineVar('dm', 0);
+        const a = p.sprite('A', { x: 10, y: 20 }), b = p.sprite('B', { x: -50, y: 40, direction: 45 });
+        a.flag(S('motion_goto', { TO: M('motion_goto_menu', 'TO', 'B') }), setG(st, 'd', B('sensing_distanceto', { DISTANCETOMENU: M('sensing_distancetomenu', 'DISTANCETOMENU', 'B') })));
+        b.flag(S('motion_gotoxy', { X: N(30), Y: N(-40) }), S('motion_pointtowards', { TOWARDS: M('motion_pointtowards_menu', 'TOWARDS', 'A') }),
+               S('motion_pointtowards', { TOWARDS: M('motion_pointtowards_menu', 'TOWARDS', 'Missing') }),
+               S('motion_glidesecstoxy', { SECS: N(0), X: N(5), Y: N(6) }), S('motion_ifonedgebounce'));
+        yield { name: 'motion_extras', project: p, frames: 4 };
+    }
+    for (const [i, style] of ['all around', 'left-right', "don't rotate", 'nonsense'].entries()) {
+        const p = mk(); const a = p.sprite('A');
+        a.flag(S('motion_setrotationstyle', {}, { STYLE: [style, null] }), S('motion_turnright', { DEGREES: N(30) }));
+        yield { name: 'rotation_style_' + i, project: p, frames: 2 };
+    }
+    {
+        const p = mk(); const a = p.sprite('A', { x: 7 });
+        a.flag(S('motion_goto', { TO: M('motion_goto_menu', 'TO', 'Missing') }), S('motion_glideto', { SECS: N(0), TO: M('motion_glideto_menu', 'TO', 'Missing') }));
+        yield { name: 'motion_goto_missing', project: p, frames: 3 };
+    }
+    // pen
+    {
+        const p = mk(); const a = p.sprite('A');
+        const par = k => M('pen_menu_colorParam', 'colorParam', k);
+        a.flag(S('pen_penDown'), S('pen_setPenColorParamTo', { COLOR_PARAM: par('color'), VALUE: N(25) }), S('pen_changePenColorParamBy', { COLOR_PARAM: par('saturation'), VALUE: N(-30) }),
+               S('pen_setPenColorParamTo', { COLOR_PARAM: par('brightness'), VALUE: N(150) }), S('pen_changePenColorParamBy', { COLOR_PARAM: par('transparency'), VALUE: N(20) }),
+               S('pen_changePenColorParamBy', { COLOR_PARAM: par('color'), VALUE: N(90) }),
+               S('pen_setPenSizeTo', { SIZE: N(2000) }), S('pen_changePenSizeBy', { SIZE: N(-1999.5) }), S('pen_penUp'), S('pen_clear'), S('pen_stamp'));
+        yield { name: 'pen_params', project: p, frames: 2 };
+    }
+    for (const [i, col] of ['#ff0000', '#0f8', '#123456', '16711680', '-1', '4278190335', 'blue', '', '#12345678', '2147483648'].entries()) {
+        const p = mk(); const a = p.sprite('A');
+        a.flag(S('pen_setPenColorToColor', { COLOR: L(col) }));
+        yield { name: 'pen_color_' + i, project: p, frames: 2 };
+    }
+    {
+        const p = mk(); const a = p.sprite('A');
+        a.flag(S('pen_setPenShadeToNumber', { SHADE: N(25) }), S('pen_changePenShadeBy', { SHADE: N(100) }), S('pen_setPenHueToNumber', { HUE: N(40) }), S('pen_changePenHueBy', { HUE: N(300) }),
+               S('pen_setPenShadeToNumber', { SHADE: N(-30) }), S('pen_changePenShadeBy', { SHADE: N(7.5) }));
+        yield { name: 'pen_legacy', project: p, frames: 2 };
+    }
+    // sound state
+    {
+        const p = mk(); const st = p.stage; st.defineVar('v', 0); st.defineVar('v2', 0);
+        const a = p.sprite('A', { sounds: SOUNDS });
+        a.flag(S('sound_setvolumeto', { VOLUME: N(150) }), setG(st, 'v', B('sound_volume')), S('sound_changevolumeby', { VOLUME: N(-250) }), setG(st, 'v2', B('sound_volume')),
+               S('sound_changevolumeby', { VOLUME: N(33.3) }), S('sound_seteffectto', { VALUE: N(1000) }, { EFFECT: ['PITCH', null] }), S('sound_changeeffectby', { VALUE: N(5) }, { EFFECT: ['PAN', null] }),
+               S('sound_cleareffects'), S('sound_stopallsounds'));
+        yield { name: 'sound_volume', project: p, frames: 4 };
+    }
+    // sensing
+    {
+        const p = mk(); const st = p.stage; for (const n of ['t', 'md', 'mx', 'my', 'kp', 'an', 'un', 'ld', 'yr', 'ds', 'ox', 'oy', 'od', 'osz', 'ovar', 'obad', 'ost', 'ocn', 'ocnum', 'tc']) st.defineVar(n, 'init');
+        const a = p.sprite('A', { x: 12, y: -3, direction: 33, size: 77, costumes: COSTUMES }); a.defineVar('mine', 'secret');
+        const b = p.sprite('B');
+        const of = (prop, obj) => B('sensing_of', { OBJECT: M('sensing_of_object_menu', 'OBJECT', obj) }, { PROPERTY: [prop, null] });
+        b.flag(setG(st, 'md', B('sensing_mousedown')),
+               setG(st, 'kp', B('sensing_keypressed', { KEY_OPTION: M('sensing_keyoptions', 'KEY_OPTION', 'space') })), setG(st, 'an', B('sensing_answer')),
+               setG(st, 'un', B('sensing_username')), setG(st, 'ld', B('sensing_loudness')),
+               setG(st, 'yr', B('operator_gt', { OPERAND1: B('sensing_current', {}, { CURRENTMENU: ['YEAR', null] }), OPERAND2: N(2000) })),
+               setG(st, 'ds', B('operator_gt', { OPERAND1: B('sensing_dayssince2000'), OPERAND2: N(1000) })),
+               setG(st, 'ox', of('x position', 'A')), setG(st, 'oy', of('y position', 'A')), setG(st, 'od', of('direction', 'A')), setG(st, 'osz', of('size', 'A')),
+               setG(st, 'ovar', of('mine', 'A')), setG(st, 'obad', of('nope', 'A')), setG(st, 'ost', of('background #', '_stage_')), setG(st, 'ocn', of('costume name', 'A')),
+               setG(st, 'ocnum', of('costume #', 'A')),
+               setG(st, 'tc', B('sensing_touchingobject', { TOUCHINGOBJECTMENU: M('sensing_touchingobjectmenu', 'TOUCHINGOBJECTMENU', 'A') })),
+               S('sensing_setdragmode', {}, { DRAG_MODE: ['draggable', null] }));
+        yield { name: 'sensing_misc', project: p, frames: 2 };
+    }
+    // control counters
+    {
+        const p = mk(); const st = p.stage; st.defineVar('c', 0);
+        const a = p.sprite('A');
+        a.flag(S('control_incr_counter'), S('control_incr_counter'), setG(st, 'c', B('control_get_counter')), S('control_clear_counter'), setG(st, 'c', B('operator_join', { STRING1: V('c'), STRING2: B('control_get_counter') })),
+               S('control_all_at_once', { SUBSTACK: stack(a.change('mine', N(1))) }));
+        a.defineVar('mine', 0);
+        yield { name: 'control_counter', project: p, frames: 2 };
+    }
+    // edge-activated hats: fire once per false->true edge
+    {
+        const p = mk(); const st = p.stage; st.defineVar('n', 0);
+        const a = p.sprite('A');
+        a.script(S('event_whengreaterthan', { VALUE: N(-1) }, { WHENGREATERTHANMENU: ['TIMER', null] }), setG(st, 'n', B('operator_add', { NUM1: V('n'), NUM2: N(1) })));
+        yield { name: 'hat_greater_than', project: p, frames: 6 };
+    }
+    // say / think (state only; bubbles are compared via the SAY event)
+    for (const [i, op] of ['looks_say', 'looks_think'].entries()) {
+        const p = mk(); const a = p.sprite('A');
+        a.flag(S(op, { MESSAGE: L('hello') }), S('looks_say', { MESSAGE: N(12) }), S(op, { MESSAGE: L('') }));
+        yield { name: 'bubble_' + i, project: p, frames: 2 };
+        const q = mk(); const b = q.sprite('A');
+        b.flag(S(op, { MESSAGE: L('stay') }), S('looks_hide'));
+        yield { name: 'bubble_hide_' + i, project: q, frames: 2 };
+    }
+}
+
+function* allCases() { yield* cases(); yield* moreCases(); yield* procCases(); yield* cloneCases(); yield* rendererCases(); }
 module.exports = { cases: allCases };

@@ -494,16 +494,7 @@ constexpr double kPi = 3.141592653589793238462643383279502884;
 
 double degToRad(double deg) { return deg * kPi / 180.0; }
 
-// RenderedTarget.setXY. With no renderer attached the position is stored as is
-// and no redraw is requested. Fencing the sprite to the stage needs costume
-// bounds from the renderer and is not implemented yet.
-void setTargetXY(PrimitiveContext& cx, double x, double y) {
-    Target& target = cx.target();
-    if (target.isStage) return;
-    target.x = x;
-    target.y = y;
-    if (cx.runtime.rendererAttached() && target.visible) cx.runtime.requestRedraw();
-}
+void setTargetXY(PrimitiveContext& cx, double x, double y) { cx.runtime.setXY(cx.target(), x, y); }
 
 // Scratch 2's snapToInteger.
 double limitPrecision(double coordinate) {
@@ -513,17 +504,7 @@ double limitPrecision(double coordinate) {
 }
 
 
-// RenderedTarget.setDirection: keeps the direction in (-180, 180]. With a
-// renderer attached, a visible target requests a redraw.
-void setTargetDirection(PrimitiveContext& cx, double direction) {
-    Target& target = cx.target();
-    if (target.isStage) return;
-    if (!std::isfinite(direction)) return;
-    // MathUtil.wrapClamp(direction, -179, 180)
-    const double range = 180.0 - (-179.0) + 1.0;
-    target.direction = direction - (std::floor((direction - (-179.0)) / range) * range);
-    if (cx.runtime.rendererAttached() && target.visible) cx.runtime.requestRedraw();
-}
+void setTargetDirection(PrimitiveContext& cx, double direction) { cx.runtime.setDirection(cx.target(), direction); }
 void motionTurnRight(PrimitiveContext& cx) {
     const double degrees = cx.input("DEGREES").toNumber();
     setTargetDirection(cx, cx.target().direction + degrees);
@@ -698,6 +679,7 @@ const Primitive* lookupPrimitive(std::string_view opcode) {
     static const std::unordered_map<std::string_view, const Primitive*> table = [] {
         std::unordered_map<std::string_view, const Primitive*> m;
         for (const Primitive& p : kPrimitives) m.emplace(p.opcode, &p);
+        registerExtPrimitives(m);
         return m;
     }();
     const auto it = table.find(opcode);

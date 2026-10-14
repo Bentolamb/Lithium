@@ -24,6 +24,10 @@ struct ExecutionContext {
     std::optional<double> loopCounter;  // control_repeat
     std::optional<double> timerStart;   // control_wait: runtime.currentMSecs at start
     double duration = 0.0;              // control_wait: milliseconds
+    // motion_glidesecstoxy (uses the wall clock, like scratch-vm's Timer)
+    std::optional<double> glideTimerStart;
+    double glideDuration = 0.0;  // seconds
+    double glideStartX = 0.0, glideStartY = 0.0, glideEndX = 0.0, glideEndY = 0.0;
     // procedures_call
     bool executed = false;
     std::optional<std::unordered_map<std::string, Value>> params;
@@ -51,7 +55,7 @@ struct StackFrame {
     }
 };
 
-class Thread {
+class Thread : public std::enable_shared_from_this<Thread> {
 public:
     enum class Status {
         Running = 0,

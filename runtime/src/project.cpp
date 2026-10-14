@@ -155,6 +155,13 @@ BlockIndex BlockContainer::getBranch(BlockIndex block, int branchNum) const {
     return input->block;
 }
 
+int Target::costumeIndexByName(std::string_view n) const {
+    for (std::size_t i = 0; i < assets->costumes.size(); i++) {
+        if (assets->costumes[i].name == n) return static_cast<int>(i);
+    }
+    return -1;
+}
+
 Variable& Target::addVariable(std::string id, std::string name, Value initial) {
     Variable v;
     v.id = std::move(id);

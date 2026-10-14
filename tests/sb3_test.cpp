@@ -120,12 +120,12 @@ TEST_CASE("sb3 timing: waits resolve in order while another sprite spins") {
 TEST_CASE("sb3: unknown opcodes load with a warning and run as no-ops") {
     const char* json = R"({"targets":[{"isStage":true,"name":"Stage","variables":{"v":["v",0]},
       "blocks":{"h":{"opcode":"event_whenflagclicked","next":"x","topLevel":true,"inputs":{},"fields":{}},
-                "x":{"opcode":"looks_hide","next":"s","inputs":{},"fields":{}},
+                "x":{"opcode":"looks_nonexistent_block","next":"s","inputs":{},"fields":{}},
                 "s":{"opcode":"data_setvariableto","next":null,"inputs":{"VALUE":[1,[10,"ok"]]},"fields":{"VARIABLE":["v","v"]}}}}]})";
     auto r = loadSb3Json(json);
     REQUIRE(r.project.has_value());
     REQUIRE(r.warnings.size() == 1);
-    REQUIRE(r.warnings[0].find("looks_hide") != std::string::npos);
+    REQUIRE(r.warnings[0].find("looks_nonexistent_block") != std::string::npos);
     Runtime rt;
     rt.loadProject(std::move(*r.project));
     rt.greenFlag();

@@ -180,6 +180,58 @@ private:
     int synthetic_ = 0;
 };
 
+std::string stringOf(const Json& j, const char* key) {
+    if (!j.contains(key)) return std::string();
+    const Json& v = j[key];
+    if (v.is_string()) return v.get<std::string>();
+    if (v.is_number()) return v.dump();
+    return std::string();
+}
+
+void loadAssets(Target& target, const Json& j) {
+    if (j.contains("costumes") && j["costumes"].is_array()) {
+        for (const Json& c : j["costumes"]) {
+            if (!c.is_object()) continue;
+            Costume costume;
+            costume.name = stringOf(c, "name");
+            costume.assetId = stringOf(c, "assetId");
+            costume.md5ext = stringOf(c, "md5ext");
+            costume.dataFormat = stringOf(c, "dataFormat");
+            costume.rotationCenterX = c.value("rotationCenterX", 0.0);
+            costume.rotationCenterY = c.value("rotationCenterY", 0.0);
+            costume.bitmapResolution = c.value("bitmapResolution", 1.0);
+            target.costumes().push_back(std::move(costume));
+        }
+    }
+    if (j.contains("sounds") && j["sounds"].is_array()) {
+        for (const Json& s : j["sounds"]) {
+            if (!s.is_object()) continue;
+            Sound sound;
+            sound.name = stringOf(s, "name");
+            sound.assetId = stringOf(s, "assetId");
+            sound.md5ext = stringOf(s, "md5ext");
+            sound.dataFormat = stringOf(s, "dataFormat");
+            sound.rate = s.value("rate", 0.0);
+            sound.sampleCount = s.value("sampleCount", 0.0);
+            target.assets->sounds.push_back(std::move(sound));
+        }
+    }
+    if (j.contains("currentCostume") && j["currentCostume"].is_number()) {
+        const double last = static_cast<double>(target.costumes().size()) - 1;
+        const double v = j["currentCostume"].get<double>();
+        target.currentCostume = static_cast<int>(std::min(std::max(v, 0.0), std::max(last, 0.0)));
+    }
+    if (j.contains("volume") && j["volume"].is_number()) target.volume = j["volume"].get<double>();
+    if (j.contains("tempo") && j["tempo"].is_number()) target.tempo = j["tempo"].get<double>();
+    if (j.contains("draggable") && j["draggable"].is_boolean()) target.draggable = j["draggable"].get<bool>();
+    if (j.contains("rotationStyle") && j["rotationStyle"].is_string()) {
+        const std::string s = j["rotationStyle"].get<std::string>();
+        target.rotationStyle = s == "don't rotate" ? RotationStyle::DontRotate
+                               : s == "left-right" ? RotationStyle::LeftRight
+                                                   : RotationStyle::AllAround;
+    }
+}
+
 void loadVariables(Target& target, const Json& vars) {
     if (!vars.is_object()) return;
     for (auto it = vars.begin(); it != vars.end(); ++it) {
@@ -262,6 +314,7 @@ Sb3LoadResult loadSb3Json(std::string_view text) {
             target->size = j->value("size", 100.0);
             target->visible = j->value("visible", true);
         }
+        loadAssets(*target, *j);
         if (j->contains("variables")) loadVariables(*target, (*j)["variables"]);
         if (j->contains("lists")) loadLists(*target, (*j)["lists"]);
         if (j->contains("broadcasts")) loadBroadcasts(*target, (*j)["broadcasts"]);

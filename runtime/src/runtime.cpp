@@ -34,6 +34,17 @@ void Runtime::loadProject(Project project) {
     project_ = std::move(project);
     cloneCounter_ = 0;
     graveyard_.clear();
+    promises_.clear();
+    questions_.clear();
+    waitingSounds_.clear();
+    keysPressed_.clear();
+    answer_.clear();
+    for (const auto& t : project_.mutableTargets()) {
+        t->uid = nextUid_++;
+        t->drawableId = -1;
+    }
+    resetProjectTimer();
+    if (host_ != nullptr) syncRenderer();
     redrawRequested_ = false;
 }
 
@@ -48,6 +59,18 @@ void Runtime::setCompatibilityMode(bool on) {
 
 void Runtime::greenFlag() {
     stopAll();
+    // PROJECT_START: reset the answer, clear sound effects; the timer restarts.
+    answer_.clear();
+    for (const auto& t : project_.targets()) {
+        t->soundPitch = 0;
+        t->soundPan = 0;
+        syncSoundState(*t);
+    }
+    resetProjectTimer();
+    for (const auto& t : project_.targets()) {
+        t->edgeValues.clear();
+        clearEffects(*t);  // Target.onGreenFlag
+    }
     startHats("event_whenflagclicked");
 }
 
@@ -55,6 +78,18 @@ void Runtime::stopAll() {
     // If a thread is mid-step, retire it. The list is replaced rather than
     // cleared: a step in progress keeps going over the old list, as in
     // scratch-vm.
+    // PROJECT_STOP_ALL listeners: sounds, effects, bubbles, questions.
+    stopAllSounds();
+    for (const auto& t : project_.targets()) {
+        t->soundPitch = 0;
+        t->soundPan = 0;
+        syncSoundState(*t);
+        t->bubble.text.clear();
+        if (host_ != nullptr) host_->setBubble(t->uid, t->drawableId, t->bubble.type.c_str(), "");
+        clearEffects(*t);  // Target.onStopAll
+    }
+    questions_.clear();
+    if (host_ != nullptr) host_->ask(nullptr);
     // Dispose all clones.
     std::vector<Target*> clones;
     for (const auto& t : project_.targets()) {
@@ -66,6 +101,17 @@ void Runtime::stopAll() {
 }
 
 void Runtime::stopForTarget(Target* target, Thread* except) {
+    // STOP_FOR_TARGET listeners: pending questions and sounds being waited on.
+    if (target != nullptr) {
+        clearTargetQuestions(*target);
+        const auto it = waitingSounds_.find(target->uid);
+        if (it != waitingSounds_.end()) {
+            if (host_ != nullptr) {
+                for (int sound : it->second) host_->stopSound(target->uid, sound);
+            }
+            it->second.clear();
+        }
+    }
     for (const std::shared_ptr<Thread>& thread : *threads_) {
         if (thread.get() == except) continue;
         if (thread->target == target) stopThread(*thread);
@@ -84,6 +130,9 @@ void Runtime::step() {
                                    [](const std::shared_ptr<Thread>& t) { return t->isKilled; }),
                     threads_->end());
     graveyard_.clear();
+    flushPromises();
+    // Edge-activated hats are evaluated before threads are stepped.
+    for (const char* hat : {"event_whentouchingobject", "event_whengreaterthan"}) startHats(hat);
     // (Edge-activated hats are evaluated here once they exist.)
     redrawRequested_ = false;
     sequencer_->stepThreads();
@@ -158,6 +207,21 @@ std::vector<std::shared_ptr<Thread>> Runtime::startHats(std::string_view opcode,
             started.push_back(pushThread(script, target));
         }
     }
+    // Edge-activated hats: only proceed when the predicate went from false to true.
+    if (hat->edgeActivated && hat->reporter != nullptr) {
+        for (const std::shared_ptr<Thread>& thread : started) {
+            Target* target = thread->target;
+            const Block& hatBlock = target->blocks.at(thread->topBlock);
+            PrimitiveContext cx(*this, *sequencer_, *thread, target->blocks, hatBlock);
+            const bool value = hat->reporter(cx).toBoolean();
+            const auto old = target->edgeValues.find(thread->topBlock);
+            const bool hasOld = old != target->edgeValues.end();
+            const bool oldValue = hasOld && old->second;
+            target->edgeValues[thread->topBlock] = value;
+            const bool activated = hasOld ? (!oldValue && value) : value;
+            if (!activated) sequencer_->retireThread(*thread);
+        }
+    }
     return started;
 }
 
@@ -166,15 +230,29 @@ Target* Runtime::createClone(Target& original) {
     cloneCounter_++;
     auto clone = std::make_unique<Target>(original);
     clone->cloneSerial = nextCloneSerial_++;
+    clone->uid = nextUid_++;
+    clone->drawableId = -1;
     // Clone hats start before the clone joins the target list, as in scratch-vm.
     Target* raw = clone.get();
+    initDrawable(*raw);
+    updateAllDrawableProperties(*raw);
     startHats("control_start_as_clone", nullptr, raw);
     project_.insertBefore(std::move(clone), &original);
+    goBehindOther(*raw, original);
     return raw;
 }
 
 void Runtime::disposeClone(Target& clone) {
     cloneCounter_--;
+    // targetWasRemoved listeners: bubbles and host state.
+    if (host_ != nullptr) {
+        host_->setBubble(clone.uid, clone.drawableId, clone.bubble.type.c_str(), "");
+        host_->targetRemoved(clone.uid);
+        if (clone.drawableId >= 0) {
+            host_->destroyDrawable(clone.drawableId, kSpriteLayer);
+            if (clone.visible) requestRedraw();
+        }
+    }
     stopForTarget(&clone, nullptr);
     std::unique_ptr<Target> owned = project_.remove(&clone);
     if (owned) graveyard_.push_back(std::move(owned));

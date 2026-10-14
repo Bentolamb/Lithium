@@ -124,6 +124,66 @@ struct Variable {
     std::vector<Value> list;   // List
 };
 
+// Asset metadata. The pixels and audio live in the host; the runtime only
+// needs names and the ids to refer to them.
+struct Costume {
+    std::string name;
+    std::string assetId;
+    std::string md5ext;
+    std::string dataFormat;
+    double rotationCenterX = 0.0;
+    double rotationCenterY = 0.0;
+    double bitmapResolution = 1.0;
+    int skinId = -1;  // renderer skin, assigned by the host after loading
+};
+
+struct Sound {
+    std::string name;
+    std::string assetId;
+    std::string md5ext;
+    std::string dataFormat;
+    double rate = 0.0;
+    double sampleCount = 0.0;
+};
+
+// What clones of a sprite share.
+struct SpriteAssets {
+    std::vector<Costume> costumes;
+    std::vector<Sound> sounds;
+};
+
+enum class RotationStyle { AllAround, LeftRight, DontRotate };
+
+struct GraphicEffects {
+    double color = 0, fisheye = 0, whirl = 0, pixelate = 0, mosaic = 0, brightness = 0, ghost = 0;
+    // nullptr for names that are not graphic effects.
+    double* byName(std::string_view name) {
+        if (name == "color") return &color;
+        if (name == "fisheye") return &fisheye;
+        if (name == "whirl") return &whirl;
+        if (name == "pixelate") return &pixelate;
+        if (name == "mosaic") return &mosaic;
+        if (name == "brightness") return &brightness;
+        if (name == "ghost") return &ghost;
+        return nullptr;
+    }
+    void clear() { *this = GraphicEffects{}; }
+};
+
+struct PenState {
+    bool down = false;
+    double color = 66.66, saturation = 100, brightness = 100, transparency = 0;
+    double shade = 50;  // legacy "change shade" blocks only
+    double color4f[4] = {0, 0, 1, 1};
+    double diameter = 1;
+};
+
+struct Bubble {
+    std::string type = "say";
+    std::string text;
+    std::uint64_t usageId = 0;
+};
+
 class Target {
 public:
     Target(std::string name, bool isStage)
@@ -133,7 +193,9 @@ public:
         : name(original.name), isStage(false), isOriginal(false), x(original.x), y(original.y),
           direction(original.direction), size(original.size), visible(original.visible),
           blocksStore_(original.blocksStore_), blocks(*blocksStore_), variables(original.variables),
-          stage_(original.stage_) {}
+          assets(original.assets), currentCostume(original.currentCostume), rotationStyle(original.rotationStyle),
+          draggable(original.draggable), effects(original.effects), soundPitch(original.soundPitch),
+          soundPan(original.soundPan), pen(original.pen), edgeValues(original.edgeValues), stage_(original.stage_) {}
     Target& operator=(const Target&) = delete;
 
     std::string name;
@@ -148,6 +210,24 @@ public:
     std::shared_ptr<BlockContainer> blocksStore_;
     BlockContainer& blocks;
     std::deque<Variable> variables;  // deque: references stay valid on growth
+
+    // ---- looks, sound, pen -------------------------------------------------
+    std::shared_ptr<SpriteAssets> assets = std::make_shared<SpriteAssets>();
+    int currentCostume = 0;
+    RotationStyle rotationStyle = RotationStyle::AllAround;
+    bool draggable = false;
+    GraphicEffects effects;
+    double volume = 100.0;
+    double soundPitch = 0.0, soundPan = 0.0;
+    int drawableId = -1;          // host renderer drawable
+    int uid = 0;                  // stable id for host notifications
+    PenState pen;
+    Bubble bubble;
+    double tempo = 60.0;          // stage only
+    std::unordered_map<BlockIndex, bool> edgeValues;  // edge-activated hat predicates
+    const std::vector<Costume>& costumes() const { return assets->costumes; }
+    std::vector<Costume>& costumes() { return assets->costumes; }
+    int costumeIndexByName(std::string_view name) const;
 
     Variable& addVariable(std::string id, std::string name, Value initial);
     Variable& addList(std::string id, std::string name, std::vector<Value> items);
@@ -188,6 +268,7 @@ public:
 
     // Executable order: stage first, then sprites from bottom layer to top.
     const std::vector<std::unique_ptr<Target>>& targets() const { return targets_; }
+    std::vector<std::unique_ptr<Target>>& mutableTargets() { return targets_; }
 
 private:
     std::vector<std::unique_ptr<Target>> targets_;

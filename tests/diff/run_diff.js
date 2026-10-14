@@ -46,6 +46,11 @@ function compare(ref, lit, tol) {
     for (let ti = 0; ti < Math.min(ref.targets.length, lit.targets.length); ti++) {
         const rt = ref.targets[ti], lt = lit.targets[ti];
         if ((rt.isStage ? 'Stage' : rt.name) !== lt.name || rt.isOriginal !== lt.isOriginal) { diffs.push(`target ${ti}: ref=${rt.name}${rt.isOriginal ? '' : '(clone)'} lithium=${lt.name}${lt.isOriginal ? '' : '(clone)'}`); continue; }
+        for (const k of ['visible', 'size', 'costume', 'volume', 'bubble']) if (!same(rt[k], lt[k])) diffs.push(`${rt.name}.${k}: ref=${JSON.stringify(rt[k])} lithium=${JSON.stringify(lt[k])}`);
+        if (!rt.isStage && rt.rotationStyle !== lt.rotationStyle) diffs.push(`${rt.name}.rotationStyle: ref=${rt.rotationStyle} lithium=${lt.rotationStyle}`);
+        rt.effects.forEach((v, i) => { if (!same(v, lt.effects[i])) diffs.push(`${rt.name}.effects[${i}]: ref=${v} lithium=${lt.effects[i]}`); });
+        if (rt.pen.down !== lt.pen.down || !same(rt.pen.size, lt.pen.size)) diffs.push(`${rt.name}.pen: ref=${JSON.stringify(rt.pen)} lithium=${JSON.stringify(lt.pen)}`);
+        rt.pen.color.forEach((v, i) => { if (!same(v, lt.pen.color[i])) diffs.push(`${rt.name}.pen.color[${i}]: ref=${v} lithium=${lt.pen.color[i]}`); });
         if (!rt.isStage) for (const k of ['x', 'y', 'direction']) if (!same(rt[k], lt[k])) diffs.push(`${rt.name}.${k}: ref=${JSON.stringify(rt[k])} lithium=${JSON.stringify(lt[k])}`);
         const names = new Set([...Object.keys(rt.variables), ...Object.keys(lt.variables)]);
         for (const n of names) if (!same(rt.variables[n], lt.variables[n])) diffs.push(`${rt.name}.${n}: ref=${JSON.stringify(rt.variables[n])} lithium=${JSON.stringify(lt.variables[n])}`);
@@ -57,6 +62,7 @@ function compare(ref, lit, tol) {
             }
         }
     }
+    if (JSON.stringify(ref.layerOrder) !== JSON.stringify(lit.layerOrder)) diffs.push(`layer order: ref=${ref.layerOrder} lithium=${lit.layerOrder}`);
     if (ref.threads !== lit.threads) diffs.push(`running threads: ref=${ref.threads} lithium=${lit.threads}`);
     return diffs;
 }

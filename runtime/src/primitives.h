@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string_view>
+#include <unordered_map>
 
 #include "lithium/project.h"
 #include "lithium/thread.h"
@@ -57,7 +58,12 @@ struct Primitive {
     CommandFn command;    // Command; also an optional predicate for hats
     ReporterFn reporter;  // Reporter
     bool restartExistingThreads;  // hats only
+    bool edgeActivated = false;   // hats only: `reporter` is the predicate
 };
+
+using PrimitiveMap = std::unordered_map<std::string_view, const Primitive*>;
+// Looks, sensing, sound, pen, extra motion and events (primitives_ext.cpp).
+void registerExtPrimitives(PrimitiveMap& map);
 
 // nullptr for opcodes without an implementation.
 const Primitive* lookupPrimitive(std::string_view opcode);

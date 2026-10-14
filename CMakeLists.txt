@@ -12,6 +12,9 @@ set(LITHIUM_RUNTIME_SOURCES
     runtime/src/thread.cpp
     runtime/src/sequencer.cpp
     runtime/src/primitives.cpp
+    runtime/src/primitives_ext.cpp
+    runtime/src/target_ops.cpp
+    runtime/src/color.cpp
     runtime/src/builtin_projects.cpp
     runtime/src/sb3.cpp
     runtime/src/inspect.cpp

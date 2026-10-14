@@ -132,7 +132,7 @@ class Target {
             isStage: this.isStage, name: this.name, variables: this.variables, lists: this.lists, broadcasts: this.broadcasts,
             blocks: this.blocks, comments: {}, currentCostume: 0, costumes: [COSTUME], sounds: [], volume: 100, layerOrder: this.isStage ? 0 : this.order,
         };
-        if (this.isStage) return { ...base, tempo: 60, videoTransparency: 50, videoState: 'on', textToSpeechLanguage: null };
+        if (this.isStage) return { ...base, tempo: 60, videoTransparency: 50, videoState: 'on', textToSpeechLanguage: null, ...this.props };
         return { ...base, visible: true, x: 0, y: 0, size: 100, direction: 90, draggable: false, rotationStyle: 'all around', ...this.props };
     }
 }
@@ -152,7 +152,7 @@ class Project {
     toJSON() {
         return {
             targets: [this.stage.toJSON(), ...this.sprites.map(s => s.toJSON())],
-            monitors: [], extensions: [],
+            monitors: [], extensions: Object.values(this.stage.blocks).concat(...this.sprites.map(x => Object.values(x.blocks))).some(b => /^pen_/.test(b.opcode)) ? ['pen'] : [],
             meta: { semver: '3.0.0', vm: '0.2.0', agent: 'lithium-diff' },
         };
     }

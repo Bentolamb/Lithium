@@ -17,6 +17,14 @@ std::string number(double d) {
     return numberToJsString(d);  // valid JSON: digits, optional fraction/exponent
 }
 
+const char* rotationStyleName(RotationStyle r) {
+    switch (r) {
+        case RotationStyle::AllAround: return "all around";
+        case RotationStyle::LeftRight: return "left-right";
+        default: return "don't rotate";
+    }
+}
+
 std::string value(const Value& v) {
     if (v.isNumber()) return number(v.toJsNumber());
     if (v.isBoolean()) return v.toBoolean() ? "true" : "false";
@@ -34,6 +42,10 @@ std::string dumpState(Runtime& rt) {
     for (const auto& t : rt.project().targets()) {
         if (t->isOriginal) order.push_back(t.get());
     }
+    // runtime.targets keeps creation order; Project order is layer (executable) order.
+    std::vector<std::string> layerOrder;
+    for (const auto& t : rt.project().targets()) layerOrder.push_back(t->isStage ? "Stage" : t->name);
+    std::sort(order.begin(), order.end(), [](const Target* a, const Target* b) { return a->uid < b->uid; });
     std::vector<const Target*> clones;
     for (const auto& t : rt.project().targets()) {
         if (!t->isOriginal) clones.push_back(t.get());
@@ -46,7 +58,13 @@ std::string dumpState(Runtime& rt) {
         firstTarget = false;
         out += "{\"name\":" + jsonQuote(t->name) + ",\"isStage\":" + (t->isStage ? "true" : "false") + ",\"isOriginal\":" + (t->isOriginal ? "true" : "false") +
                ",\"x\":" + number(t->x) + ",\"y\":" + number(t->y) + ",\"direction\":" + number(t->direction) +
-               ",\"size\":" + number(t->size) + ",\"visible\":" + (t->visible ? "true" : "false") + ",\"variables\":{";
+               ",\"size\":" + number(t->size) + ",\"visible\":" + (t->visible ? "true" : "false") + ",\"costume\":" + std::to_string(t->currentCostume) +
+               ",\"volume\":" + number(t->volume) + ",\"rotationStyle\":" + jsonQuote(rotationStyleName(t->rotationStyle)) +
+               ",\"effects\":[" + number(t->effects.color) + "," + number(t->effects.fisheye) + "," + number(t->effects.whirl) + "," +
+               number(t->effects.pixelate) + "," + number(t->effects.mosaic) + "," + number(t->effects.brightness) + "," +
+               number(t->effects.ghost) + "],\"pen\":{\"down\":" + (t->pen.down ? "true" : "false") + ",\"size\":" + number(t->pen.diameter) +
+               ",\"color\":[" + number(t->pen.color) + "," + number(t->pen.saturation) + "," + number(t->pen.brightness) + "," +
+               number(t->pen.transparency) + "]},\"bubble\":" + jsonQuote(t->bubble.text) + ",\"variables\":{";
         bool first = true;
         for (const Variable& v : t->variables) {
             if (v.type != Variable::Type::Scalar) continue;
@@ -66,6 +84,8 @@ std::string dumpState(Runtime& rt) {
         }
         out += "}}";
     }
+    out += "],\"layerOrder\":[";
+    for (std::size_t i = 0; i < layerOrder.size(); i++) out += (i ? "," : "") + jsonQuote(layerOrder[i]);
     out += "]}";
     return out;
 }
