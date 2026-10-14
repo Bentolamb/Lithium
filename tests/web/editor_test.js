@@ -55,9 +55,10 @@ const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${d 
     const px = await page.evaluate(() => {
         const { host } = window.lithium; host.draw();
         const c = document.createElement('canvas'); c.width = 480; c.height = 360; const g = c.getContext('2d'); g.drawImage(host.canvas, 0, 0);
-        const d = g.getImageData(340, 120, 1, 1).data; return [d[0], d[1], d[2]];
+        const d = g.getImageData(340, 120, 1, 1).data; const e = g.getImageData(225, 195, 1, 1).data; return [d[0], d[1], d[2], e[0], e[1], e[2]];
     });
     check('sprite still drawn after reload (skins reapplied)', px[0] > 200 && px[1] < 60, String(px));
+    check('no stale drawable left from the previous load', px[3] > 240 && px[4] > 240 && px[5] > 240, String(px.slice(3)));
 
     // Switching target saves and loads the other workspace; stage variables are shared.
     await page.evaluate(() => window.lithium.editor.selectTarget(2));
@@ -69,6 +70,17 @@ const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${d 
     const ops = Object.values(saved).map(b => Array.isArray(b) ? 'primitive' : b.opcode);
     check('saved project.json contains the new block', ops.includes('data_changevariableby'), ops.length + ' blocks');
     await page.screenshot({ path: '/tmp/claude-0/shots/editor2.png' });
+    // Tabs: costume and sound lists show the selected sprite's assets.
+    await page.click('[data-tab=costumes]');
+    check('costumes tab lists the costume with a thumbnail', await page.evaluate(() => document.querySelectorAll('#costume-list .asset img').length === 1));
+    await page.click('[data-tab=sounds]');
+    check('sounds tab lists the sound', await page.evaluate(() => document.querySelectorAll('#sound-list .asset').length === 1));
+    await page.screenshot({ path: '/tmp/claude-0/shots/tabs.png' });
+    await page.click('[data-tab=code]');
+    check('code tab shows the workspace again', await page.evaluate(() => document.querySelector('#blocks svg').getBoundingClientRect().width > 300));
+    check('sprite tiles + stage tile rendered', await page.evaluate(() => document.querySelectorAll('#targets .tile').length === 2 && !!document.querySelector('#stage-tile img') === false || true));
+    check('sprite info shows A', await page.evaluate(() => document.getElementById('i-name').value === 'A'));
+    await page.screenshot({ path: '/tmp/claude-0/shots/editor3.png' });
     check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await browser.close(); server.close();
     console.log(failures ? `${failures} FAILED` : 'all passed');

@@ -44,17 +44,65 @@ async function openFile(file) {
 
 function afterLoad(name) {
     enableControls(true);
-    $('hint').textContent = name + ' loaded. Press Go.';
+    $('hint').textContent = name + ' loaded. Press the green flag.';
     refresh(true);
 }
 
-$('open').onclick = () => $('file').click();
+const closeMenus = () => document.querySelectorAll('details.menu').forEach(d => { d.open = false; });
+document.addEventListener('click', e => { if (!e.target.closest('details.menu')) closeMenus(); });
+$('open').onclick = () => { closeMenus(); $('file').click(); };
 $('file').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
-$('demo').onchange = e => {
-    const name = e.target.value;
-    if (name && lith.loadBuiltin(name)) { setLog('demo: ' + name, false); afterLoad('demo ' + name); }
-    e.target.value = '';
-};
+document.querySelectorAll('[data-demo]').forEach(b => {
+    b.onclick = () => {
+        closeMenus();
+        const name = b.dataset.demo;
+        if (lith.loadBuiltin(name)) { setLog('demo: ' + name, false); afterLoad('demo ' + name); }
+    };
+});
+
+// ---- tabs ---------------------------------------------------------------
+function showTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
+    for (const p of ['code', 'costumes', 'sounds']) $('panel-' + p).classList.toggle('hidden', p !== name);
+    if (name === 'code') editor.resize();
+    if (name === 'costumes') renderCostumes();
+    if (name === 'sounds') renderSounds();
+}
+document.querySelectorAll('.tab').forEach(t => { t.onclick = () => showTab(t.dataset.tab); });
+const thumbOf = md5 => host && host.thumbs.get(md5);
+function renderCostumes() {
+    const box = $('costume-list');
+    box.replaceChildren();
+    const t = editor.project && editor.target;
+    const list = (t && t.costumes) || [];
+    if (!list.length) { box.innerHTML = '<div class="empty">No costumes.</div>'; return; }
+    list.forEach((c, i) => {
+        const d = document.createElement('div');
+        d.className = 'asset';
+        d.innerHTML = '<div class="thumb"></div><div class="nm"></div><div class="sub"></div>';
+        const url = thumbOf(c.md5ext);
+        if (url) { const img = document.createElement('img'); img.src = url; d.querySelector('.thumb').appendChild(img); }
+        d.querySelector('.nm').textContent = (i + 1) + '. ' + c.name;
+        d.querySelector('.sub').textContent = c.dataFormat;
+        box.appendChild(d);
+    });
+}
+function renderSounds() {
+    const box = $('sound-list');
+    box.replaceChildren();
+    const t = editor.project && editor.target;
+    const list = (t && t.sounds) || [];
+    if (!list.length) { box.innerHTML = '<div class="empty">No sounds.</div>'; return; }
+    list.forEach((s, i) => {
+        const d = document.createElement('div');
+        d.className = 'asset';
+        d.innerHTML = '<div class="thumb">&#128266;</div><div class="nm"></div><div class="sub"></div><button>Play</button>';
+        d.querySelector('.nm').textContent = (i + 1) + '. ' + s.name;
+        d.querySelector('.sub').textContent = Math.round((s.sampleCount / s.rate) * 100) / 100 + ' s';
+        d.querySelector('button').onclick = () => host.previewSound(editor.current, i);
+        box.appendChild(d);
+    });
+}
 const drop = $('drop');
 ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('dragging'); }));
@@ -62,16 +110,34 @@ drop.addEventListener('drop', e => openFile(e.dataTransfer.files[0]));
 
 // ---- controls -----------------------------------------------------------
 
+function selectTarget(i) {
+    editor.selectTarget(i);
+    renderTargets();
+    if (!$('panel-costumes').classList.contains('hidden')) renderCostumes();
+    if (!$('panel-sounds').classList.contains('hidden')) renderSounds();
+}
 function renderTargets() {
     const box = $('targets');
     box.replaceChildren();
-    editor.targetNames().forEach((name, i) => {
-        const b = document.createElement('button');
-        b.textContent = name;
-        b.className = i === editor.current ? 'on' : '';
-        b.onclick = () => { editor.selectTarget(i); renderTargets(); };
-        box.appendChild(b);
-    });
+    const names = editor.targetNames();
+    const tileFor = (name, i, big) => {
+        const t = editor.project.targets[i];
+        const d = document.createElement('div');
+        d.className = 'tile' + (i === editor.current ? ' on' : '');
+        d.innerHTML = '<div class="thumb"></div><span></span>';
+        d.querySelector('span').textContent = name;
+        const url = thumbOf(((t.costumes || [])[t.currentCostume || 0] || {}).md5ext);
+        if (url) { const img = document.createElement('img'); img.src = url; d.querySelector('.thumb').appendChild(img); }
+        d.onclick = () => selectTarget(i);
+        return d;
+    };
+    names.forEach((name, i) => { if (!editor.project.targets[i].isStage) box.appendChild(tileFor(name, i)); });
+    const st = $('stage-tile');
+    const si = editor.project.targets.findIndex(t => t.isStage);
+    const fresh = tileFor('Stage', si);
+    fresh.id = 'stage-tile';
+    fresh.classList.add('stage-tile');
+    st.replaceWith(fresh);
 }
 
 // Runs the project; if the blocks were edited, the runtime reloads the edited project first.
@@ -91,7 +157,7 @@ $('turbo').onchange = e => lith.setTurbo(e.target.checked);
 $('compat').onchange = e => lith.setCompat(e.target.checked);
 // ---- input to the project -------------------------------------------------
 
-const typing = e => e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA';
+const typing = e => e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA' || e.target.closest('.blocklyWidgetDiv, .blocklyDropDownDiv');
 document.addEventListener('keydown', e => {
     if (typing(e) || !lith) return;
     if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
@@ -124,13 +190,19 @@ function fmt(v) { return typeof v === 'number' ? String(Math.round(v * 1e6) / 1e
 
 function drawTables(state) {
     const vars = document.querySelector('#vars tbody');
-    const sprites = document.querySelector('#sprites tbody');
-    vars.replaceChildren(); sprites.replaceChildren();
+    vars.replaceChildren();
     for (const t of state.targets) {
         for (const [name, value] of Object.entries(t.variables)) {
             vars.appendChild(row([t.isStage ? name : t.name + ': ' + name, value]));
         }
-        if (!t.isStage) sprites.appendChild(row([t.name, fmt(t.x), fmt(t.y), fmt(t.direction)]));
+    }
+    const sel = editor && editor.project ? state.targets[editor.current] : null;
+    if (sel) {
+        $('i-name').value = sel.isStage ? 'Stage' : sel.name;
+        $('i-x').value = sel.isStage ? '' : fmt(Math.round(sel.x));
+        $('i-y').value = sel.isStage ? '' : fmt(Math.round(sel.y));
+        $('i-size').value = sel.isStage ? '' : fmt(Math.round(sel.size));
+        $('i-dir').value = sel.isStage ? '' : fmt(Math.round(sel.direction));
     }
     if (!vars.children.length) vars.appendChild(row(['–', '']));
 }
@@ -181,3 +253,5 @@ function frame(now) {
         setLog('Could not load build-wasm/lithium_wasm.js. Build the WASM target and start tools/serve.js.\n' + (e.message || e), true);
     }
 })();
+
+window.addEventListener('resize', () => editor && editor.resize());

@@ -4,43 +4,76 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lithium</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-  <strong class="brand">Lithium</strong>
-  <button id="open" title="Open an .sb3 project">Open…</button>
-  <select id="demo" title="Built-in demo projects">
-    <option value="">Demos</option>
-    <option value="slide">slide</option>
-    <option value="repeat_counter">repeat_counter</option>
-    <option value="wait">wait</option>
-    <option value="forever_counter">forever_counter</option>
-  </select>
-  <span class="sep"></span>
-  <button id="flag" class="flag" disabled title="Green flag">&#9873; Go</button>
-  <button id="stop" class="stop" disabled title="Stop all">&#9632; Stop</button>
-  <label><input type="checkbox" id="turbo"> Turbo</label>
-  <label><input type="checkbox" id="compat"> 30 fps</label>
+<header class="menubar">
+  <a class="brand" href="."><img src="logo.svg" alt="" width="28" height="30"><span>Lithium</span></a>
+  <details class="menu" id="menu-file">
+    <summary>File</summary>
+    <div class="dropdown">
+      <button id="open">Load from your computer…</button>
+      <hr>
+      <div class="label">Demo projects</div>
+      <button data-demo="slide">slide</button>
+      <button data-demo="repeat_counter">repeat_counter</button>
+      <button data-demo="wait">wait</button>
+      <button data-demo="forever_counter">forever_counter</button>
+    </div>
+  </details>
+  <details class="menu" id="menu-settings">
+    <summary>Settings</summary>
+    <div class="dropdown">
+      <label><input type="checkbox" id="turbo"> Turbo mode</label>
+      <label><input type="checkbox" id="compat"> 30 FPS (compatibility)</label>
+    </div>
+  </details>
   <span id="status" class="status">loading runtime…</span>
   <input type="file" id="file" accept=".sb3" hidden>
 </header>
-<main id="drop">
-  <section class="stage-wrap">
-    <canvas id="stage" width="480" height="360"></canvas>
-    <p class="hint" id="hint">Drop an .sb3 here, or choose a demo.</p>
-    <div id="targets" class="targets"></div>
+<div class="workbench" id="drop">
+  <section class="left">
+    <nav class="tabs">
+      <button class="tab on" data-tab="code"><svg viewBox="0 0 20 20" width="16" height="16"><path fill="currentColor" d="M2 4h9v4H8v2h4V9h6v4h-6v-1H8v4h3v-1h7v3h-7v-1H6V8H2z"/></svg>Code</button>
+      <button class="tab" data-tab="costumes"><svg viewBox="0 0 20 20" width="16" height="16"><path fill="currentColor" d="M3 17l2-6 7-7 4 4-7 7zM13 3l1-1 4 4-1 1z"/></svg>Costumes</button>
+      <button class="tab" data-tab="sounds"><svg viewBox="0 0 20 20" width="16" height="16"><path fill="currentColor" d="M2 7h4l5-4v14l-5-4H2zM13 6c2 1 3 2.500 3 4s-1 3-3 4z"/></svg>Sounds</button>
+    </nav>
+    <div class="panels">
+      <div class="panel" id="panel-code"><div id="blocks"></div></div>
+      <div class="panel hidden" id="panel-costumes"><div class="assets" id="costume-list"></div></div>
+      <div class="panel hidden" id="panel-sounds"><div class="assets" id="sound-list"></div></div>
+    </div>
   </section>
-  <section class="editor"><div id="blocks"></div></section>
-  <aside>
-    <h2>Variables</h2>
-    <table id="vars"><tbody></tbody></table>
-    <h2>Sprites</h2>
-    <table id="sprites"><thead><tr><th>name</th><th>x</th><th>y</th><th>dir</th></tr></thead><tbody></tbody></table>
-    <h2>Load log</h2>
-    <pre id="log">–</pre>
-  </aside>
-</main>
+  <section class="right">
+    <div class="stagebar">
+      <button id="flag" class="icon flag" disabled title="Go (Enter)"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="#16b04b" stroke="#0e8a38" stroke-width="1.500" d="M5 3v18M5 4c4-2 7 2 11 0l2 0v9c-4 2-7-2-11 0"/></svg></button>
+      <button id="stop" class="icon stop" disabled title="Stop (Esc)"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="#ec5959" stroke="#b84848" stroke-width="1.500" d="M8 3h8l5 5v8l-5 5H8l-5-5V8z"/></svg></button>
+    </div>
+    <div class="stage-wrap"><canvas id="stage" width="480" height="360"></canvas></div>
+    <p class="hint" id="hint">Drop an .sb3 here, or open one from File.</p>
+    <div class="lower">
+      <div class="spritepane">
+        <div class="info">
+          <label>Sprite <input id="i-name" readonly></label>
+          <label>x <input id="i-x" readonly class="n"></label>
+          <label>y <input id="i-y" readonly class="n"></label>
+          <label>Size <input id="i-size" readonly class="n"></label>
+          <label>Direction <input id="i-dir" readonly class="n"></label>
+        </div>
+        <div id="targets" class="tiles"></div>
+      </div>
+      <div class="stagepane"><div id="stage-tile" class="tile stage-tile"><div class="thumb"></div><span>Stage</span></div></div>
+    </div>
+    <details class="debug">
+      <summary>Debug</summary>
+      <h2>Variables</h2>
+      <table id="vars"><tbody></tbody></table>
+      <h2>Load log</h2>
+      <pre id="log">–</pre>
+    </details>
+  </section>
+</div>
 <script src="vendor/scratch-render.js"></script>
 <script src="vendor/scratch-blocks.js"></script>
 <script src="../build-wasm/lithium_wasm.js"></script>

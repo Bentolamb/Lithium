@@ -92,7 +92,10 @@ export class Editor {
             toolbox: makeToolbox(this.toolboxContext()),
             media: 'vendor/media/',
             zoom: { controls: true, wheel: true, startScale: 0.75, maxScale: 3, minScale: 0.25, scaleSpeed: 1.2 },
-            colours: undefined,
+            colours: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? {
+                workspace: '#16181d', flyout: '#1d2027', toolbox: '#1a1d24', toolboxSelected: '#2b3a57', toolboxText: '#d6d9e2', toolboxHover: '#4a71a8',
+                scrollbar: '#5b6478', scrollbarHover: '#7b859b', insertionMarker: '#ffffff', fieldShadow: 'rgba(255,255,255,0.1)',
+            } : undefined,
             grid: { spacing: 40, length: 2, colour: '#ddd' },
             sounds: false,
             trashcan: true,
@@ -109,8 +112,8 @@ export class Editor {
             this.dirty = true;
             this.onChange();
         });
-        this.loading = false;
-        this.dirty = false;
+        // Blockly delivers creation events asynchronously; ignore those from the initial load.
+        setTimeout(() => { if (this.workspace === ws) { this.loading = false; this.dirty = false; } }, 0);
         ws.scrollCenter();
     }
 
@@ -144,13 +147,13 @@ export class Editor {
         for (const v of this.workspace.getAllVariables()) {
             const target = (!t.isStage && v.isLocal) ? own : (t.isStage ? own : globals);
             if (v.type === '') {
-                const old = (t.variables || {})[v.id] || (stage.variables || {})[v.id];
-                target.variables[v.id] = [v.name, old ? old[1] : 0];
+                const old = (t.variables || {})[v.getId()] || (stage.variables || {})[v.getId()];
+                target.variables[v.getId()] = [v.name, old ? old[1] : 0];
             } else if (v.type === 'list') {
-                const old = (t.lists || {})[v.id] || (stage.lists || {})[v.id];
-                target.lists[v.id] = [v.name, old ? old[1] : []];
+                const old = (t.lists || {})[v.getId()] || (stage.lists || {})[v.getId()];
+                target.lists[v.getId()] = [v.name, old ? old[1] : []];
             } else if (v.type === 'broadcast_msg') {
-                broadcasts[v.id] = v.name;
+                broadcasts[v.getId()] = v.name;
             }
         }
         t.blocks = xmlTreeToSb3Blocks(tree, () => 'b' + Math.random().toString(36).slice(2, 12));

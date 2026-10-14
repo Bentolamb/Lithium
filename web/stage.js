@@ -22,6 +22,7 @@ export class StageHost {
         this.askBox = null;
         this.soundBank = new Map();     // md5ext -> Promise<AudioBuffer|null>
         this.zip = null;
+        this.thumbs = new Map();       // md5ext -> image URL for the asset lists
     }
 
     // ---- assets --------------------------------------------------------
@@ -60,6 +61,11 @@ export class StageHost {
     async makeSkin(c, bytes) {
         try {
             if (!bytes) return -1;
+            if (!this.thumbs.has(c.md5ext)) {
+                this.thumbs.set(c.md5ext, c.dataFormat === 'svg'
+                    ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new TextDecoder().decode(bytes))
+                    : URL.createObjectURL(new Blob([bytes], { type: c.dataFormat === 'png' ? 'image/png' : 'image/jpeg' })));
+            }
             if (c.dataFormat === 'svg') {
                 const text = new TextDecoder().decode(bytes);
                 return this.r.createSVGSkin(text, [c.rotationCenterX, c.rotationCenterY]);
@@ -216,6 +222,17 @@ export class StageHost {
             if (i >= 0) list.splice(i, 1);
             if (entry.req) this.lith.soundFinished(entry.req);
         };
+        src.start();
+    }
+
+    // Plays a sound of an original target from the Sounds tab (not a runtime request).
+    async previewSound(targetIndex, soundIndex) {
+        const buffer = await (this.buffers[targetIndex] || [])[soundIndex];
+        if (!buffer) return;
+        this.ensureAudio();
+        const src = this.audio.createBufferSource();
+        src.buffer = buffer;
+        src.connect(this.audio.destination);
         src.start();
     }
 
