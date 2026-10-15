@@ -86,6 +86,17 @@ std::vector<std::shared_ptr<Thread>> Sequencer::stepThreads() {
     return doneThreads;
 }
 
+bool Sequencer::fusedLoopMayContinue(Thread& thread) {
+    if (thread.isKilled || thread.status != Thread::Status::Running) return false;
+    StackFrame* frame = thread.peekStackFrame();
+    if (frame != nullptr && frame->warpMode) {
+        // Warp mode only yields once the warp time slice is spent.
+        if ((++loopPasses_ & 7u) != 0) return true;
+        return warpElapsed(thread) <= kWarpTimeMs;
+    }
+    return canRepeatLoopNow(thread);
+}
+
 bool Sequencer::canRepeatLoopNow(const Thread& thread) {
     if (thread.status != Thread::Status::Running || thread.isKilled) return false;
     const auto& threads = *runtime_.threads();

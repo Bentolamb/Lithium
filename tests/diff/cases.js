@@ -165,6 +165,28 @@ function* cases() {
         st.flag(st.set('sa_b', N('1')), S('control_repeat', { TIMES: N('5'), SUBSTACK: stack(st.change('sa_b', N('1'))) }));
         yield { name: 'control_flow', project: p, frames: 4 };
     }
+    // ---- fused loops: plain-command bodies run back to back -----------------------
+    {
+        const p = new Project();
+        const st = p.stage, a = p.sprite('A'), b = p.sprite('B');
+        for (const v of ['big', 'until_big', 'fwd', 'cnt_a', 'cnt_b', 'sum']) st.defineVar(v, 0);
+        st.flag(S('control_repeat', { TIMES: N('9000'), SUBSTACK: stack(st.change('big', N('1')), st.change('sum', V('big'))) }));
+        st.flag(st.set('until_big', N('0')), S('control_repeat_until', { CONDITION: B('operator_gt', { OPERAND1: V('until_big'), OPERAND2: N('7000') }), SUBSTACK: stack(st.change('until_big', N('3'))) }));
+        // (forever loops are time-bound, so their iteration counts depend on clock reads; not compared)
+        // two loops on different sprites interleave one iteration per pass
+        a.flag(S('control_repeat', { TIMES: N('30'), SUBSTACK: stack(st.change('cnt_a', N('1'))) }));
+        b.flag(S('control_repeat', { TIMES: N('30'), SUBSTACK: stack(st.change('cnt_b', V('cnt_a'))) }));
+        yield { name: 'fused_loops', project: p, frames: 40 };
+    }
+    {
+        const p = new Project();
+        const st = p.stage, a = p.sprite('A');
+        st.defineVar('w', 0); st.defineVar('o', 0);
+        const warp = a.defineProc('warploop', [], true, S('control_repeat', { TIMES: N('12000'), SUBSTACK: stack(st.change('w', N('1'))) }), st.change('w', N('1000000')));
+        a.flag(CALL(warp), st.change('w', N('7')));
+        a.flag(S('control_repeat', { TIMES: N('5'), SUBSTACK: stack(st.change('o', N('1'))) }));
+        yield { name: 'fused_warp', project: p, frames: 6 };
+    }
     // ---- motion ----------------------------------------------------------
     {
         const p = new Project();

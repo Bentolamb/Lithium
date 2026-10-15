@@ -68,6 +68,8 @@ struct Block {
     // Runtime cache of the resolved primitive; not part of the project data.
     mutable const Primitive* primitive = nullptr;
     mutable bool primitiveResolved = false;
+    // Loop blocks only: -1 unknown, 0 body needs the scheduler, 1 body is a plain command chain.
+    mutable std::int8_t fusableBody = -1;
 
     const Input* findInput(std::string_view name) const;
     const Field* findField(std::string_view name) const;

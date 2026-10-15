@@ -29,6 +29,10 @@ public:
     void stepToProcedure(Thread& thread, const std::string& proccode);
     void retireThread(Thread& thread);
 
+    // A fused loop (see primitives.cpp) asks this at each iteration boundary whether
+    // the scheduler would have let the thread run the next iteration right away.
+    bool fusedLoopMayContinue(Thread& thread);
+
     // The thread currently being stepped, or nullptr.
     Thread* activeThread = nullptr;
 

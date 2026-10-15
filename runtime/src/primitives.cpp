@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "lithium/runtime.h"
 #include "lithium/text.h"
@@ -37,6 +38,73 @@ Value evaluateReporter(const PrimitiveContext& parent, BlockIndex index) {
 
 // ------------------------------------------------------------------- control
 
+// Loop fusing. A loop whose body is a plain chain of non-yielding commands (no control
+// flow, no waits, nothing that starts threads) can run its iterations back to back
+// without going through the thread stack and scheduler each time. Behaviour is
+// identical: the loop still stops at the same iteration boundaries the scheduler
+// would (redraw requested, work time spent, other threads present, warp time spent).
+bool isPlainCommand(std::string_view op) {
+    static const std::unordered_set<std::string_view> plain = {
+        "data_setvariableto", "data_changevariableby", "data_addtolist", "data_deleteoflist",
+        "data_deletealloflist", "data_insertatlist", "data_replaceitemoflist",
+        "motion_movesteps", "motion_turnright", "motion_turnleft", "motion_pointindirection",
+        "motion_gotoxy", "motion_changexby", "motion_setx", "motion_changeyby", "motion_sety",
+        "motion_setrotationstyle",
+        "looks_say", "looks_think", "looks_show", "looks_hide", "looks_switchcostumeto",
+        "looks_nextcostume", "looks_changeeffectby", "looks_seteffectto", "looks_cleargraphiceffects",
+        "looks_changesizeby", "looks_setsizeto", "looks_gotofrontback", "looks_goforwardbackwardlayers",
+        "pen_clear", "pen_stamp", "pen_penDown", "pen_penUp", "pen_setPenColorToColor",
+        "pen_changePenColorParamBy", "pen_setPenColorParamTo", "pen_changePenSizeBy", "pen_setPenSizeTo",
+        "pen_setPenShadeToNumber", "pen_changePenShadeBy", "pen_setPenHueToNumber", "pen_changePenHueBy",
+        "sensing_resettimer",
+    };
+    return plain.count(op) != 0;
+}
+
+bool hasFusableBody(const PrimitiveContext& cx) {
+    if (cx.block.fusableBody >= 0) return cx.block.fusableBody == 1;
+    bool ok = true;
+    BlockIndex b = cx.blocks.getBranch(cx.thread.peekStack(), 1);
+    if (!cx.blocks.valid(b)) ok = false;  // an empty body is cheap already; keep the generic path
+    while (ok && cx.blocks.valid(b)) {
+        const Block& blk = cx.blocks.at(b);
+        const Primitive* prim = primitiveFor(blk);
+        ok = prim != nullptr && prim->kind == Primitive::Kind::Command && prim->command != nullptr &&
+             isPlainCommand(blk.opcode);
+        b = blk.next;
+    }
+    cx.block.fusableBody = ok ? 1 : 0;
+    return ok;
+}
+
+void runBodyOnce(PrimitiveContext& cx, BlockIndex first) {
+    for (BlockIndex b = first; cx.blocks.valid(b);) {
+        const Block& blk = cx.blocks.at(b);
+        PrimitiveContext bcx(cx.runtime, cx.sequencer, cx.thread, cx.blocks, blk);
+        primitiveFor(blk)->command(bcx);
+        b = blk.next;
+    }
+}
+
+// `gate` decides at the start of each iteration whether to run the body (false: the
+// loop is over and execution falls through to the next block). Returns false when the
+// generic path must be used instead.
+template <class Gate>
+bool fuseLoop(PrimitiveContext& cx, Gate gate) {
+    if (!hasFusableBody(cx)) return false;
+    const BlockIndex first = cx.blocks.getBranch(cx.thread.peekStack(), 1);
+    for (;;) {
+        if (!gate()) return true;
+        runBodyOnce(cx, first);
+        if (!cx.sequencer.fusedLoopMayContinue(cx.thread)) {
+            // Yield at the loop boundary; this block runs again on the next pass.
+            if (StackFrame* f = cx.thread.peekStackFrame()) f->isLoop = true;
+            cx.thread.status = Thread::Status::Yield;
+            return true;
+        }
+    }
+}
+
 void controlRepeat(PrimitiveContext& cx) {
     const double times = jsRound(cx.inputNumber("TIMES"));
     ExecutionContext& ec = cx.stackFrame();
@@ -44,19 +112,25 @@ void controlRepeat(PrimitiveContext& cx) {
     if (!ec.loopCounter) ec.loopCounter = times;
     // Only execute once per frame. When the branch finishes this block runs
     // again, and the exhausted counter falls through to the next block.
+    if (fuseLoop(cx, [&] { *ec.loopCounter -= 1.0; return *ec.loopCounter >= 0.0; })) return;
     *ec.loopCounter -= 1.0;
     if (*ec.loopCounter >= 0.0) cx.startBranch(1, true);
 }
 
 void controlRepeatUntil(PrimitiveContext& cx) {
+    if (fuseLoop(cx, [&] { return !cx.input("CONDITION").toBoolean(); })) return;
     if (!cx.input("CONDITION").toBoolean()) cx.startBranch(1, true);
 }
 
 void controlWhile(PrimitiveContext& cx) {
+    if (fuseLoop(cx, [&] { return cx.input("CONDITION").toBoolean(); })) return;
     if (cx.input("CONDITION").toBoolean()) cx.startBranch(1, true);
 }
 
-void controlForever(PrimitiveContext& cx) { cx.startBranch(1, true); }
+void controlForever(PrimitiveContext& cx) {
+    if (fuseLoop(cx, [] { return true; })) return;
+    cx.startBranch(1, true);
+}
 
 void controlWait(PrimitiveContext& cx) {
     if (cx.stackTimerNeedsInit()) {
