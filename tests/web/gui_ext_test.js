@@ -40,6 +40,13 @@ srv.listen(0,async()=>{
  await p.evaluate(()=>window.vm.greenFlag());
  const ok2=await p.waitForFunction(()=>window.vm.lithium.active&&String(window.vm.lithium.lith.state().targets[0].variables.ext_done)==='1',null,{timeout:30000}).then(()=>true).catch(()=>false);
  check('restored project runs again', ok2);
+ // editing scripts while a session is alive: the next green flag must run the new scripts
+ await p.evaluate(()=>{const st=window.vm.runtime.getTargetForStage();const blk=st.blocks._blocks;const done=Object.values(blk).find(x=>x.opcode==='data_setvariableto'&&x.fields.VARIABLE.value==='ext_done');const sid=done.inputs.VALUE.block;st.blocks.changeBlock({id:sid,element:'field',name:'TEXT',value:'2'});});
+ await p.evaluate(()=>window.vm.greenFlag());
+ const ok3=await p.waitForFunction(()=>String(window.vm.lithium.lith.state().targets[0].variables.ext_done)==='2',null,{timeout:30000}).then(()=>true).catch(()=>false);
+ check('edited script runs without pressing stop first', ok3, await p.evaluate(()=>String(window.vm.lithium.lith.state().targets[0].variables.ext_done)));
+ const txt=await p.evaluate(()=>{const j=JSON.parse(window.vm.lithium.rawToJSON());return Object.keys(j.targets[0].blocks).length});
+ check('raw project json has blocks', txt>5);
  await b.close();srv.close();
  console.log(fails?fails+' FAILED':'all passed');process.exit(fails?1:0);
 });

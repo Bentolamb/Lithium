@@ -118,13 +118,13 @@ export function installLithium(vm, base = 'lithium/') {
         }
     };
 
-    L.begin = async () => {
-        const lith = await L.init();
-        if (!vm.renderer) throw new Error('renderer not attached');
+    // Loads the editor's current scripts into Lithium and sets up drawing.
+    L.load = async () => {
+        const lith = L.lith;
         const json = orig.toJSON(); // real opcodes, not the placeholders written for other editors
         const res = lith.loadProjectJson(json);
-        await L.attachStorage();
         if (!res.ok) { console.warn('Lithium could not load the project', res.log); }
+        await L.attachStorage();
         if (!L.host) {
             L.host = new StageHost(null, lith, vm.renderer);
             lith.setHost((op, a, b, c, d, p) => L.host.handle(op, a, b, c, d, p));
@@ -134,12 +134,29 @@ export function installLithium(vm, base = 'lithium/') {
         hideVmDrawables(true);
         lith.setTurbo(runtime.turboMode);
         lith.setCompat(runtime.frameLoop.framerate <= 30);
+    };
+
+    L.begin = async () => {
+        await L.init();
+        if (!vm.renderer) throw new Error('renderer not attached');
+        await L.load();
         // answer prompts through Lithium's host UI is not available in the GUI yet
         runtime._step = L.step;
         L.active = true;
         L.frame = 0;
         L.lastDown = false;
     };
+
+    // A session outlives the script that ran, so the scripts may have been edited since it
+    // loaded. Carry the running state (variables, positions) back to the editor, then load
+    // the current scripts and start over from that state.
+    L.reload = async () => {
+        L.syncToVm(true);
+        L.lith.stopAll();
+        await L.load();
+        L.lastDown = false;
+    };
+    L.rawToJSON = () => orig.toJSON();
 
     // Copy Lithium's state into the VM targets so the editor, monitors and the
     // sprite info pane reflect what ran.
@@ -217,7 +234,7 @@ export function installLithium(vm, base = 'lithium/') {
         const go = async () => {
             try {
                 if (!L.active) await L.begin();
-                else { L.lith.stopAll(); }
+                else { await L.reload(); }
                 L.lith.greenFlag();
             } catch (e) {
                 console.error('Lithium failed, falling back to the built-in runtime', e);
@@ -227,7 +244,7 @@ export function installLithium(vm, base = 'lithium/') {
                 orig.greenFlag();
             }
         };
-        go();
+        L.chain = (L.chain || Promise.resolve()).then(go); // clicks in quick succession run one after another
     };
     runtime.stopAll = function () {
         if (L.active) { L.end(); return; }

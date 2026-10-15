@@ -469,18 +469,49 @@ literal 0
 HcmV?d00001
 
 diff --git a/src/components/menu-bar/menu-bar.jsx b/src/components/menu-bar/menu-bar.jsx
-index 6caddb5..ee55b73 100644
+index 6caddb5..d4aabd1 100644
 --- a/src/components/menu-bar/menu-bar.jsx
 +++ b/src/components/menu-bar/menu-bar.jsx
-@@ -99,6 +99,7 @@ import advancedIcon from './tw-advanced.svg';
+@@ -99,6 +99,8 @@ import advancedIcon from './tw-advanced.svg';
  
  import ninetiesLogo from './nineties_logo.svg';
  import catLogo from './cat_logo.svg';
 +import lithiumLogo from './lithium_logo.png';
++import {projectToText} from '../../lib/lithium/txt_export';
  import prehistoricLogo from './prehistoric-logo.svg';
  import oldtimeyLogo from './oldtimey-logo.svg';
  
-@@ -491,6 +492,14 @@ class MenuBar extends React.Component {
+@@ -218,6 +220,7 @@ class MenuBar extends React.Component {
+             'handleClickRemix',
+             'handleClickSave',
+             'handleClickSaveAsCopy',
++            'handleClickExportText',
+             'handleClickPackager',
+             'handleClickDesktopSettings',
+             'handleClickRestorePoints',
+@@ -263,6 +266,21 @@ class MenuBar extends React.Component {
+         this.props.onClickSave();
+         this.props.onRequestCloseFile();
+     }
++    handleClickExportText () {
++        const vm = this.props.vm;
++        const title = this.props.projectTitle || 'Project';
++        const json = JSON.parse(vm.lithium ? vm.lithium.rawToJSON() : vm.toJSON());
++        const blob = new Blob([projectToText(json, title)], {type: 'text/plain;charset=utf-8'});
++        const url = URL.createObjectURL(blob);
++        const link = document.createElement('a');
++        link.href = url;
++        link.download = `${title}.txt`;
++        document.body.appendChild(link);
++        link.click();
++        document.body.removeChild(link);
++        setTimeout(() => URL.revokeObjectURL(url), 1000);
++        this.props.onRequestCloseFile();
++    }
+     handleClickSaveAsCopy () {
+         this.props.onClickSaveAsCopy();
+         this.props.onRequestCloseFile();
+@@ -491,6 +509,14 @@ class MenuBar extends React.Component {
                  )}
              >
                  <div className={styles.mainMenu}>
@@ -495,7 +526,7 @@ index 6caddb5..ee55b73 100644
                      <div className={styles.fileGroup}>
                          {this.props.errors.length > 0 && <div>
                              <MenuLabel
-@@ -516,14 +525,14 @@ class MenuBar extends React.Component {
+@@ -516,14 +542,14 @@ class MenuBar extends React.Component {
                                      place={this.props.isRtl ? 'left' : 'right'}
                                  >
                                      <MenuSection>
@@ -512,7 +543,30 @@ index 6caddb5..ee55b73 100644
                                              <FormattedMessage
                                                  defaultMessage="This is a bug. Please report it."
                                                  description="Link in error menu"
-@@ -1011,27 +1020,6 @@ class MenuBar extends React.Component {
+@@ -691,6 +717,11 @@ class MenuBar extends React.Component {
+                                             )}
+                                         </SB3Downloader>
+                                     </MenuSection>
++                                    <MenuSection>
++                                        <MenuItem onClick={this.handleClickExportText}>
++                                            Export as TXT
++                                        </MenuItem>
++                                    </MenuSection>
+                                     {this.props.onClickPackager && (
+                                         <MenuSection>
+                                             <MenuItem
+@@ -911,9 +942,8 @@ class MenuBar extends React.Component {
+                                 onClick={this.props.onClickSettingsModal}
+                             >
+                                 <img
+-                                    src={advancedIcon}
++                                    src={lithiumLogo}
+                                     draggable={false}
+-                                    width={20}
+                                     height={20}
+                                 />
+                                 <span className={styles.collapsibleLabel}>
+@@ -1011,27 +1041,6 @@ class MenuBar extends React.Component {
                              />
                          ) : []))}
                      </div>

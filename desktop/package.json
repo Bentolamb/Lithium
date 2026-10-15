@@ -1,7 +1,7 @@
 {
   "name": "lithium",
   "productName": "Lithium",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "description": "Fast, open-source, Scratch-compatible editor with a C++ runtime",
   "main": "main.js",
   "license": "AGPL-3.0-only",
