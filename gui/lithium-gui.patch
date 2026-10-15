@@ -637,7 +637,7 @@ index 52b6334..1a2cb60 100644
                      id="tw.settingsModal.storeProjectOptionsHelp"
                  />
 diff --git a/src/lib/brand.js b/src/lib/brand.js
-index 8aba8e1..0e526da 100644
+index 8aba8e1..1ed2d58 100644
 --- a/src/lib/brand.js
 +++ b/src/lib/brand.js
 @@ -1,5 +1,7 @@
@@ -647,7 +647,7 @@ index 8aba8e1..0e526da 100644
 -    APP_NAME: 'TurboWarp'
 +    APP_NAME: 'Lithium',
 +    // Set to the public repository URL. AGPL-3.0 requires offering source to users.
-+    SOURCE_URL: ''
++    SOURCE_URL: 'https://github.com/Bentolamb/Lithium'
  };
 diff --git a/src/lib/libraries/extensions/index.jsx b/src/lib/libraries/extensions/index.jsx
 index ff06f2a..bc6c759 100644
