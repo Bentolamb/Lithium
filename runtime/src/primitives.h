@@ -67,6 +67,11 @@ using PrimitiveMap = std::unordered_map<std::string_view, const Primitive*>;
 // Looks, sensing, sound, pen, extra motion and events (primitives_ext.cpp).
 void registerExtPrimitives(PrimitiveMap& map);
 
+// Lithium's own extensions: Lithium Lab, Packin, OutList (primitives_lithium.cpp).
+void registerLithiumPrimitives(PrimitiveMap& map);
+// True when blocks of a non-core extension are implemented (id lowercase, no separators).
+bool extensionHasPrimitives(std::string_view normalizedId);
+
 // nullptr for opcodes without an implementation.
 const Primitive* lookupPrimitive(std::string_view opcode);
 // Resolves and caches the primitive for a block.

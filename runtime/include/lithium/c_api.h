@@ -84,6 +84,26 @@ int32_t lithium_get_position(lithium_runtime* rt, const char* target, double* x,
  */
 typedef double (*lithium_host_callback)(int32_t op, double a, double b, double c, double d, const void* p);
 void lithium_set_host_callback(lithium_runtime* rt, lithium_host_callback cb);
+/* ---- OutList storage -------------------------------------------------------
+ * The platform answers storage requests asynchronously. The callback receives
+ * (request id, op, project area, list name, data pointer, data length) with
+ * op 0 write, 1 read, 2 exists, 3 delete; pointers are valid during the call only.
+ * It must later call lithium_storage_complete(id, status, data, len) with status
+ * 0 ok, 1 not found, 2 error (data = file contents for a successful read).
+ * Write must be atomic or recoverable. Without a callback an in-memory store is used. */
+typedef void (*lithium_storage_callback)(int32_t request_id, int32_t op, const char* area, const char* name,
+                                         const uint8_t* data, int32_t length);
+void lithium_set_storage_callback(lithium_runtime* rt, lithium_storage_callback cb);
+void lithium_storage_complete(lithium_runtime* rt, int32_t request_id, int32_t status, const uint8_t* data, int32_t length);
+/* Native builds: keep saved lists as files under `directory`. */
+void lithium_set_storage_directory(lithium_runtime* rt, const char* directory);
+/* Name that scopes saved lists (the project title). */
+void lithium_set_storage_scope(lithium_runtime* rt, const char* scope);
+/* Names already saved for the current scope, separated by '\n' (answers "exists?"). */
+void lithium_storage_prime(lithium_runtime* rt, const char* names);
+/* The area name the current scope maps to (the first argument the storage callback receives). */
+const char* lithium_storage_area(lithium_runtime* rt);
+
 /* JSON: [{"name":..., "costumes":[{name,md5ext,dataFormat,rotationCenterX,
  * rotationCenterY,bitmapResolution}], "sounds":[{name,md5ext,dataFormat,rate,
  * sampleCount}]}] for every original target, in project order. */

@@ -1,6 +1,7 @@
 #include "primitives.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -201,6 +202,22 @@ void procedureCall(PrimitiveContext& cx) {
     cx.startProcedure(proccode);
 }
 
+// Boolean parameters named like the compatibility checks answer them when no procedure
+// parameter of that name exists (the "is TurboWarp?" convention, see Lithium Lab).
+Value argumentReporterBoolean(PrimitiveContext& cx) {
+    const Field* f = cx.field("VALUE");
+    if (f == nullptr) return Value::number(0.0);
+    const std::string name = f->value.toString();
+    const Value* v = cx.thread.getParam(name);
+    if (v != nullptr) return *v;
+    std::string lower = name;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower == "is turbowarp?") return Value::boolean(false);   // Lithium is not TurboWarp
+    if (lower == "is compiled?") return Value::boolean(false);    // projects are interpreted
+    if (lower == "is lithium?") return Value::boolean(true);
+    return Value::number(0.0);
+}
+
 Value argumentReporter(PrimitiveContext& cx) {
     const Field* f = cx.field("VALUE");
     if (f == nullptr) return Value::number(0.0);
@@ -245,8 +262,13 @@ Value controlCloneMenu(PrimitiveContext& cx) {
 
 // Variable of a VARIABLE field; the name string is only built when the id misses.
 Variable& fieldVariable(PrimitiveContext& cx, const Field& field) {
-    if (Variable* v = cx.target().lookupVariableById(field.id)) return *v;
-    return cx.target().lookupOrCreateVariable(field.id, field.value.toString());
+    Target& t = cx.target();
+    if (field.cachedTargetUid == t.uid && field.cachedVariable != nullptr) return *field.cachedVariable;
+    Variable* v = t.lookupVariableById(field.id);
+    if (v == nullptr) v = &t.lookupOrCreateVariable(field.id, field.value.toString());
+    field.cachedTargetUid = t.uid;
+    field.cachedVariable = v;
+    return *v;
 }
 
 void dataSetVariableTo(PrimitiveContext& cx) {
@@ -667,7 +689,7 @@ const Primitive kPrimitives[] = {
     {"procedures_prototype", Kind::Reporter, nullptr, &controlCloneMenuEmpty, false},
     {"procedures_call", Kind::Command, &procedureCall, nullptr, false},
     {"argument_reporter_string_number", Kind::Reporter, nullptr, &argumentReporter, false},
-    {"argument_reporter_boolean", Kind::Reporter, nullptr, &argumentReporter, false},
+    {"argument_reporter_boolean", Kind::Reporter, nullptr, &argumentReporterBoolean, false},
 
     {"data_setvariableto", Kind::Command, &dataSetVariableTo, nullptr, false},
     {"data_changevariableby", Kind::Command, &dataChangeVariableBy, nullptr, false},
@@ -773,15 +795,33 @@ void PrimitiveContext::startBranch(int branchNum, bool isLoop) const {
 
 // -------------------------------------------------------------------- lookup
 
-const Primitive* lookupPrimitive(std::string_view opcode) {
+static const std::unordered_map<std::string_view, const Primitive*>& primitiveTable() {
     static const std::unordered_map<std::string_view, const Primitive*> table = [] {
         std::unordered_map<std::string_view, const Primitive*> m;
         for (const Primitive& p : kPrimitives) m.emplace(p.opcode, &p);
         registerExtPrimitives(m);
+        registerLithiumPrimitives(m);
         return m;
     }();
+    return table;
+}
+
+const Primitive* lookupPrimitive(std::string_view opcode) {
+    const auto& table = primitiveTable();
     const auto it = table.find(opcode);
     return it == table.end() ? nullptr : it->second;
+}
+
+bool extensionHasPrimitives(std::string_view normalizedId) {
+    static const char* core[] = {"motion", "looks", "sound", "event", "control", "sensing", "operator", "data", "procedures", "argument"};
+    for (const char* c : core) if (normalizedId == c) return false;
+    const std::string prefix = std::string(normalizedId) + "_";
+    for (const auto& kv : primitiveTable()) {
+        std::string op(kv.first);
+        for (char& ch : op) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (op.compare(0, prefix.size(), prefix) == 0) return true;
+    }
+    return false;
 }
 
 const Primitive* primitiveFor(const Block& block) {

@@ -15,7 +15,7 @@ if [ ! -d scratch-gui ]; then
 fi
 cd scratch-gui
 mkdir -p src/lib/lithium static/lithium
-cp "$here"/web/{lithium.js,stage.js,gui_bridge.js} src/lib/lithium/
+cp "$here"/web/{lithium.js,stage.js,gui_bridge.js,extensions.js,fallback.js} src/lib/lithium/
 cp "$here"/web/logo.svg static/lithium/logo.svg
 cp "$here"/web/logo.png src/components/menu-bar/lithium_logo.png
 cp "$here"/build-wasm/lithium_wasm.{js,wasm} static/lithium/

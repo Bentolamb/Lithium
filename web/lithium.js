@@ -27,6 +27,11 @@ export async function loadRuntime(factory) {
         mouse: c('post_mouse', null, ['number', 'number', 'number', 'number', 'number', 'number']),
         answer: c('post_answer', null, ['number', 'string']),
         soundDone: c('sound_finished', null, ['number', 'number']),
+        setStorageCb: c('set_storage_callback', null, ['number', 'number']),
+        storageDone: c('storage_complete', null, ['number', 'number', 'number', 'number', 'number']),
+        storageScope: c('set_storage_scope', null, ['number', 'string']),
+        storagePrime: c('storage_prime', null, ['number', 'string']),
+        storageAreaOf: c('storage_area', 'string', ['number']),
     };
     // Typed views into WASM memory for the host callback (heap views are re-read
     // on every call because memory growth replaces the underlying buffer).
@@ -37,7 +42,20 @@ export async function loadRuntime(factory) {
         setF64: (p, arr) => { new Float64Array(m.HEAPF64.buffer, p, arr.length).set(arr); },
     };
     let hostFn = 0;
+    let storageFn = 0;
+    let scope = 'project';
+    let storageHandler = null;
     const rt = f.create();
+    const reply = (id, status, data) => {
+        if (data && data.length) {
+            const ptr = m._malloc(data.length);
+            m.HEAPU8.set(data, ptr);
+            f.storageDone(rt, id, status, ptr, data.length);
+            m._free(ptr);
+        } else {
+            f.storageDone(rt, id, status, 0, 0);
+        }
+    };
     // The browser has a stage to draw on, so motion blocks request redraws.
     f.renderer(rt, 1);
     return {
@@ -58,6 +76,22 @@ export async function loadRuntime(factory) {
             hostFn = handler ? m.addFunction((op, a, b, c, d, p) => handler(op, a, b, c, d, p), 'diddddi') : 0;
             f.setHost(rt, hostFn);
         },
+        // OutList storage. handler(op, area, name, bytes) -> Promise<{status, data}>, with op
+        // 0 write, 1 read, 2 exists, 3 delete and status 0 ok, 1 not found, 2 error.
+        setStorage(handler) {
+            if (storageFn) m.removeFunction(storageFn);
+            storageHandler = handler;
+            storageFn = handler ? m.addFunction((id, op, areaPtr, namePtr, dataPtr, len) => {
+                const area = m.UTF8ToString(areaPtr), name = m.UTF8ToString(namePtr);
+                const bytes = op === 0 ? m.HEAPU8.slice(dataPtr, dataPtr + len) : null;
+                Promise.resolve().then(() => handler(op, area, name, bytes)).then(
+                    r => reply(id, r.status, r.data), () => reply(id, 2, null));
+            }, 'viiiiii') : 0;
+            f.setStorageCb(rt, storageFn);
+        },
+        setStorageScope(name) { scope = String(name || 'project'); f.storageScope(rt, scope); },
+        storageArea() { return f.storageAreaOf(rt); },
+        primeStorageIndex(names) { f.storagePrime(rt, names.join('\n')); },
         assetManifest() { return JSON.parse(f.manifest(rt)); },
         setCostumeSkin(t, c, skin) { f.setSkin(rt, t, c, skin); },
         syncRenderer() { f.sync(rt); },
@@ -113,4 +147,54 @@ export async function readSb3(file) {
     const buffer = await file.arrayBuffer();
     const bytes = await readZipEntry(buffer, 'project.json');
     return { json: new TextDecoder().decode(bytes), buffer };
+}
+
+// IndexedDB-backed OutList storage: one record per saved list, keyed "<area>/<name>".
+// Each put is a single transaction, so a write either lands completely or not at all.
+export function indexedDbStorage(dbName = 'lithium-outlist') {
+    let dbPromise = null;
+    const open = () => dbPromise || (dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('lists');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    }));
+    const request = r => new Promise((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    return {
+        async handler(op, area, name, bytes) {
+            const key = area + '/' + name;
+            try {
+                const db = await open();
+                if (op === 0) {
+                    await new Promise((res, rej) => {
+                        const tx = db.transaction('lists', 'readwrite');
+                        tx.objectStore('lists').put(bytes, key);
+                        tx.oncomplete = res; tx.onerror = tx.onabort = () => rej(tx.error);
+                    });
+                    return { status: 0 };
+                }
+                const store = db.transaction('lists', op === 3 ? 'readwrite' : 'readonly').objectStore('lists');
+                const value = await request(store.get(key));
+                if (value === undefined) return { status: 1 };
+                if (op === 3) {
+                    await new Promise((res, rej) => {
+                        const tx = db.transaction('lists', 'readwrite');
+                        tx.objectStore('lists').delete(key);
+                        tx.oncomplete = res; tx.onerror = tx.onabort = () => rej(tx.error);
+                    });
+                    return { status: 0 };
+                }
+                return { status: 0, data: op === 1 ? new Uint8Array(value) : undefined };
+            } catch (e) {
+                return { status: 2 };
+            }
+        },
+        // Names saved under an area (for "exists?").
+        async list(area) {
+            const db = await open();
+            const keys = await request(db.transaction('lists', 'readonly').objectStore('lists')
+                .getAllKeys(IDBKeyRange.bound(area + '/', area + '/\uffff')));
+            return keys.map(k => k.slice(area.length + 1));
+        },
+    };
 }

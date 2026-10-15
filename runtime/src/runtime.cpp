@@ -42,6 +42,10 @@ void Runtime::loadProject(Project project) {
     cloneCounter_ = 0;
     graveyard_.clear();
     promises_.clear();
+    storageWaiters_.clear();
+    storageDone_.clear();
+    listBindings.clear();
+    outListError.clear();
     questions_.clear();
     waitingSounds_.clear();
     keysPressed_.clear();

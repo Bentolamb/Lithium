@@ -484,7 +484,81 @@ void Runtime::resolveRequest(int requestId) {
     }
 }
 
+void Runtime::setStorage(StorageBackend* backend) {
+    storage_ = backend;
+    if (backend != nullptr) backend->setCompletion([this](int id, StorageStatus s, std::string d) { storageComplete(id, s, std::move(d)); });
+}
+
+StorageBackend* Runtime::storage() {
+    if (storage_ == nullptr) {
+        ownedStorage_ = std::make_unique<MemoryStorage>();
+        setStorage(ownedStorage_.get());
+    }
+    return storage_;
+}
+
+std::string Runtime::storageArea() const {
+    std::uint64_t h = 1469598103934665603ull;
+    for (unsigned char c : storageScope_) h = (h ^ c) * 1099511628211ull;
+    std::string area;
+    for (unsigned char c : storageScope_) {
+        if (area.size() >= 40) break;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) area.push_back(static_cast<char>(c));
+        else if (c == ' ' || c == '-' || c == '_') area.push_back('-');
+    }
+    static const char* hex = "0123456789abcdef";
+    area.push_back('~');
+    for (int i = 60; i >= 0; i -= 4) area.push_back(hex[(h >> i) & 15]);
+    return area;
+}
+
+void Runtime::setStorageScope(std::string scope) {
+    storageScope_ = std::move(scope);
+    storageIndex_.clear();
+    storageIndexReady_ = false;
+}
+
+bool Runtime::storageHas(const std::string& name) {
+    if (!storageIndexReady_) {
+        std::vector<std::string> names;
+        if (storage()->listNames(storageArea(), names)) primeStorageIndex(names);
+    }
+    return storageIndex_.count(name) != 0;
+}
+
+void Runtime::primeStorageIndex(const std::vector<std::string>& names) {
+    storageIndex_.clear();
+    storageIndex_.insert(names.begin(), names.end());
+    storageIndexReady_ = true;
+}
+
+void Runtime::storageRequest(Thread& thread, StorageOp op, const std::string& name, std::string data, StorageDone done) {
+    StorageBackend* backend = storage();
+    const int id = newRequestId();
+    storageWaiters_[id] = std::move(done);
+    waitForPromise(thread, PromiseKind::External, 0, id);
+    backend->submit(id, op, storageArea(), name, std::move(data));
+}
+
+void Runtime::storageComplete(int requestId, StorageStatus status, std::string data) {
+    storageDone_.push_back({requestId, status, std::move(data)});
+}
+
+void Runtime::deliverStorage() {
+    std::vector<StorageResult> done;
+    done.swap(storageDone_);
+    for (StorageResult& r : done) {
+        const auto it = storageWaiters_.find(r.id);
+        if (it == storageWaiters_.end()) continue;
+        StorageDone cb = std::move(it->second);
+        storageWaiters_.erase(it);
+        if (cb) cb(r.status, r.data);
+        resolveRequest(r.id);
+    }
+}
+
 void Runtime::flushPromises() {
+    deliverStorage();
     // Immediate promises resolve in creation order; timers once due.
     const double nowMs = clock_();
     std::vector<PendingPromise> pending;

@@ -19,10 +19,12 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "lithium/host.h"
 #include "lithium/project.h"
+#include "lithium/storage.h"
 #include "lithium/thread.h"
 #include "lithium/value.h"
 
@@ -167,6 +169,28 @@ public:
     // Runs after the current step so promise callbacks are not racing it.
     void flushPromises();
 
+    // ---- persistent storage (OutList) ---------------------------------------------
+    using StorageDone = std::function<void(StorageStatus, std::string&)>;
+    // The platform's backend; null selects an in-memory one. Not owned.
+    void setStorage(StorageBackend* backend);
+    StorageBackend* storage();
+    // Names saved lists are filed under; normally the project title.
+    void setStorageScope(std::string scope);
+    // Existence is answered from an index of saved names (a reporter cannot wait). Backends that
+    // can list synchronously fill it themselves; others call primeStorageIndex.
+    std::string storageAreaName() const { return storageArea(); }
+    bool storageHas(const std::string& name);
+    void primeStorageIndex(const std::vector<std::string>& names);
+    void storageNoteSaved(const std::string& name) { storageIndex_.insert(name); }
+    void storageNoteRemoved(const std::string& name) { storageIndex_.erase(name); }
+    // The thread waits until the backend answers; `done` then runs at the start of a step.
+    void storageRequest(Thread& thread, StorageOp op, const std::string& name, std::string data, StorageDone done);
+    // Called by the backend (any time between steps); delivery is deferred to the next step.
+    void storageComplete(int requestId, StorageStatus status, std::string data);
+    struct ListBinding { std::string name; std::uint64_t fingerprint; bool unloaded = false; };
+    std::unordered_map<const void*, ListBinding> listBindings;  // list -> file it matches
+    std::string outListError;  // result of the last OutList block ("" = success)
+
     // ---- ask and wait -----------------------------------------------------------
     void askAndWait(Thread& thread, const std::string& question);
     void postAnswer(const std::string& answer);
@@ -223,6 +247,16 @@ private:
         std::function<void()> onResolve;
     };
     std::vector<PendingPromise> promises_;
+    StorageBackend* storage_ = nullptr;
+    std::unique_ptr<StorageBackend> ownedStorage_;
+    std::string storageScope_ = "project";
+    struct StorageResult { int id; StorageStatus status; std::string data; };
+    std::vector<StorageResult> storageDone_;
+    std::unordered_map<int, StorageDone> storageWaiters_;
+    void deliverStorage();
+    std::string storageArea() const;
+    std::unordered_set<std::string> storageIndex_;
+    bool storageIndexReady_ = false;
     int lastRequestId_ = 0;
     void completePromise(const std::shared_ptr<Thread>& thread);
     // questions

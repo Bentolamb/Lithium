@@ -41,9 +41,13 @@ struct Input {
     BlockIndex block = kNoBlock;
 };
 
+struct Variable;
 struct Field {
     Value value;
     std::string id;  // e.g. the variable id for VARIABLE fields
+    // Last variable this field resolved to, for the target with this uid (a lookup cache).
+    mutable int cachedTargetUid = -1;
+    mutable Variable* cachedVariable = nullptr;
 };
 
 // <mutation> of procedures_prototype / procedures_call blocks.

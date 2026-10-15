@@ -2,7 +2,9 @@
 // and the Lithium WASM runtime (execution, state). While a "session" is active,
 // Lithium runs the project and draws it with the VM's own renderer; the VM keeps
 // the editor state and is synced from Lithium on stop and for monitors.
-import { loadRuntime } from './lithium.js';
+import { loadRuntime, indexedDbStorage } from './lithium.js';
+import { registerLithiumExtensions } from './extensions.js';
+import { toFallbackJSON, fromFallbackObject } from './fallback.js';
 import { StageHost } from './stage.js';
 
 const EMPTY_PROJECT = JSON.stringify({
@@ -36,12 +38,21 @@ export function installLithium(vm, base = 'lithium/') {
         step: runtime._step.bind(runtime),
         postIOData: vm.postIOData.bind(vm),
         startDrag: vm.startDrag.bind(vm),
+        toJSON: vm.toJSON.bind(vm),
+        deserializeProject: vm.deserializeProject.bind(vm),
     };
     const L = {
         enabled: true, active: false, lith: null, host: null, ready: null, frame: 0, error: null,
         lastDown: false,
     };
     vm.lithium = L;
+    L.scope = 'project'; // names saved lists; the GUI sets it to the project title
+    L.storage = null;
+
+    // Lithium-only blocks: editor support, and a form other editors can open.
+    registerLithiumExtensions(vm);
+    vm.toJSON = function (...a) { return toFallbackJSON(orig.toJSON(...a)); };
+    vm.deserializeProject = function (json, zip) { return orig.deserializeProject(fromFallbackObject(json), zip); };
 
     L.init = () => {
         if (!L.ready) {
@@ -92,11 +103,27 @@ export function installLithium(vm, base = 'lithium/') {
         host.manifest = manifest;
     };
 
+    // OutList: saved lists live in IndexedDB (the browser, and the desktop app's own profile).
+    L.attachStorage = async () => {
+        const lith = L.lith;
+        try {
+            if (!L.storage) {
+                L.storage = indexedDbStorage();
+                lith.setStorage(L.storage.handler);
+            }
+            lith.setStorageScope(L.scope);
+            lith.primeStorageIndex(await L.storage.list(lith.storageArea()));
+        } catch (e) {
+            console.warn('OutList storage unavailable', e); // saves then report an error instead of crashing
+        }
+    };
+
     L.begin = async () => {
         const lith = await L.init();
         if (!vm.renderer) throw new Error('renderer not attached');
-        const json = vm.toJSON();
+        const json = orig.toJSON(); // real opcodes, not the placeholders written for other editors
         const res = lith.loadProjectJson(json);
+        await L.attachStorage();
         if (!res.ok) { console.warn('Lithium could not load the project', res.log); }
         if (!L.host) {
             L.host = new StageHost(null, lith, vm.renderer);

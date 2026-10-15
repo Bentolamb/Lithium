@@ -9,6 +9,8 @@
 #include "lithium/text.h"
 #include "lithium/value.h"
 #include "lithium/runtime.h"
+#include "lithium/storage.h"
+#include <memory>
 
 namespace {
 
@@ -99,7 +101,22 @@ public:
 
 }  // namespace
 
+// Storage requests forwarded to the platform; it answers through lithium_storage_complete.
+class CallbackStorage : public lithium::StorageBackend {
+public:
+    lithium_storage_callback cb = nullptr;
+    void submit(int id, lithium::StorageOp op, const std::string& area, const std::string& name, std::string data) override {
+        if (cb == nullptr) { finish(id, lithium::StorageStatus::Error); return; }
+        cb(id, static_cast<int32_t>(op), area.c_str(), name.c_str(), reinterpret_cast<const uint8_t*>(data.data()),
+           static_cast<int32_t>(data.size()));
+    }
+    bool persistent() const override { return true; }
+    using lithium::StorageBackend::finish;
+};
+
 struct lithium_runtime {
+    CallbackStorage storageCb;
+    std::unique_ptr<lithium::FileStorage> fileStorage;
     CallbackHost host;
     lithium::Runtime impl;
     double manualNow = 0.0;
@@ -110,6 +127,43 @@ struct lithium_runtime {
 };
 
 extern "C" {
+
+void lithium_set_storage_callback(lithium_runtime* rt, lithium_storage_callback cb) {
+    rt->storageCb.cb = cb;
+    rt->impl.setStorage(cb != nullptr ? &rt->storageCb : nullptr);
+}
+
+void lithium_storage_complete(lithium_runtime* rt, int32_t id, int32_t status, const uint8_t* data, int32_t length) {
+    const auto st = status == 0 ? lithium::StorageStatus::Ok : status == 1 ? lithium::StorageStatus::NotFound : lithium::StorageStatus::Error;
+    rt->impl.storageComplete(id, st, data != nullptr && length > 0 ? std::string(reinterpret_cast<const char*>(data), static_cast<size_t>(length)) : std::string());
+}
+
+void lithium_set_storage_directory(lithium_runtime* rt, const char* directory) {
+    rt->fileStorage = std::make_unique<lithium::FileStorage>(directory);
+    rt->impl.setStorage(rt->fileStorage.get());
+}
+
+void lithium_set_storage_scope(lithium_runtime* rt, const char* scope) { rt->impl.setStorageScope(scope != nullptr ? scope : ""); }
+
+const char* lithium_storage_area(lithium_runtime* rt) {
+    rt->stringBuffer = rt->impl.storageAreaName();
+    return rt->stringBuffer.c_str();
+}
+
+void lithium_storage_prime(lithium_runtime* rt, const char* names) {
+    std::vector<std::string> list;
+    std::string cur;
+    for (const char* p = names != nullptr ? names : ""; ; p++) {
+        if (*p == '\n' || *p == 0) {
+            if (!cur.empty()) list.push_back(cur);
+            cur.clear();
+            if (*p == 0) break;
+        } else {
+            cur.push_back(*p);
+        }
+    }
+    rt->impl.primeStorageIndex(list);
+}
 
 lithium_runtime* lithium_runtime_create(void) { return new lithium_runtime(); }
 
