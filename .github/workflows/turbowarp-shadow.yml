@@ -1,0 +1,67 @@
+name: TurboWarp + Lithium shadow integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/turbowarp-wasm-rebase
+    paths:
+      - '.github/workflows/turbowarp-shadow.yml'
+      - 'integration/**'
+      - 'runtime/**'
+      - 'CMakeLists.txt'
+      - 'third_party/**'
+      - 'tests/wasm_smoke.js'
+
+permissions:
+  contents: read
+
+jobs:
+  editor-with-shadow-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '4.0.12'
+      - name: Install Ninja and ZIP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build zip
+      - name: Build native Lithium to WebAssembly
+        run: |
+          emcmake cmake -S . -B build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DLITHIUM_BUILD_TESTS=OFF
+          cmake --build build-wasm --parallel 2
+          node tests/wasm_smoke.js build-wasm/lithium_wasm.js
+      - name: Clone original TurboWarp editor
+        run: git clone --depth 1 https://github.com/TurboWarp/scratch-gui.git /tmp/turbowarp-gui
+      - name: Record upstream revision
+        run: git -C /tmp/turbowarp-gui rev-parse HEAD | tee turbowarp-source-sha.txt
+      - name: Install GUI dependencies
+        working-directory: /tmp/turbowarp-gui
+        run: npm ci --no-audit --no-fund
+      - name: Build TurboWarp GUI without modifying its VM
+        working-directory: /tmp/turbowarp-gui
+        run: npm run build
+      - name: Add shadow diagnostic bridge
+        run: |
+          mkdir -p /tmp/turbowarp-gui/build/lithium
+          cp build-wasm/lithium_wasm.js build-wasm/lithium_wasm.wasm /tmp/turbowarp-gui/build/lithium/
+          cp integration/shadow.js /tmp/turbowarp-gui/build/lithium/shadow.js
+          node integration/inject_shadow.mjs /tmp/turbowarp-gui/build
+      - name: Package combined editor
+        run: |
+          cd /tmp/turbowarp-gui/build
+          zip -qr "$GITHUB_WORKSPACE/turbowarp-lithium-shadow.zip" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turbowarp-lithium-shadow-editor
+          path: |
+            turbowarp-lithium-shadow.zip
+            turbowarp-source-sha.txt
+          if-no-files-found: error
+          retention-days: 14
