@@ -33,3 +33,20 @@ test('fails if no supported HTML entrypoint exists', () => {
         rmSync(dir,{recursive:true,force:true});
     }
 });
+
+test('upgrades a stale two-script injection into three ordered scripts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lithium-upgrade-'));
+    try {
+        const file = join(dir, 'editor.html');
+        writeFileSync(file, '<html><body><script src="/lithium/lithium_wasm.js"></script>\n' +
+            '<script src="/lithium/shadow.js"></script></body></html>');
+        const result = spawnSync(process.execPath, [script, dir], {encoding:'utf8'});
+        assert.equal(result.status, 0, result.stderr);
+        const html = readFileSync(file, 'utf8');
+        for (const name of ['lithium_wasm', 'compare', 'shadow']) {
+            assert.equal(html.split('/lithium/' + name + '.js').length - 1, 1);
+        }
+        assert.ok(html.indexOf('/lithium/lithium_wasm.js') < html.indexOf('/lithium/compare.js'));
+        assert.ok(html.indexOf('/lithium/compare.js') < html.indexOf('/lithium/shadow.js'));
+    } finally { rmSync(dir, {recursive:true,force:true}); }
+});
