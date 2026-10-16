@@ -1,0 +1,29 @@
+name: TurboWarp integration tooling
+
+on:
+  push:
+    branches:
+      - dev/turbowarp-wasm-rebase
+    paths:
+      - 'tools/audit_turbowarp.mjs'
+      - 'tests/audit_turbowarp.test.mjs'
+      - '.github/workflows/turbowarp-tooling.yml'
+  pull_request:
+    paths:
+      - 'tools/audit_turbowarp.mjs'
+      - 'tests/audit_turbowarp.test.mjs'
+      - '.github/workflows/turbowarp-tooling.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit-tooling-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/audit_turbowarp.test.mjs
