@@ -4,8 +4,9 @@ import {mkdtempSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
-const script = new URL('../integration/inject_shadow.mjs', import.meta.url).pathname;
+const script = fileURLToPath(new URL('../integration/inject_shadow.mjs', import.meta.url));
 test('injects exactly once into a generated editor page', () => {
     const dir = mkdtempSync(join(tmpdir(), 'lithium-html-'));
     try {
