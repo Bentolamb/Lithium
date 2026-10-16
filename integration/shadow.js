@@ -32,6 +32,13 @@
         status.mode = 'ready';
         status.vm = vm;
         status.snapshot = () => safe(() => JSON.parse(f.dump(handle)));
+        status.compare = () => safe(() => {
+            if (!window.LithiumCompare) throw new Error('Lithium comparator is unavailable');
+            const lithium = JSON.parse(f.dump(handle));
+            const turbo = window.LithiumCompare.turboSnapshot(vm);
+            return window.LithiumCompare.compare(lithium, turbo);
+        });
+        status.lastComparison = null;
         // Only mirror when an actual Scratch project can be serialized.
         const originalFlag = vm.greenFlag;
         vm.greenFlag = function (...args) {
@@ -47,6 +54,7 @@
                 f.turbo(handle, vm.runtime.turboMode ? 1 : 0);
                 f.greenFlag(handle);
                 status.frames = 0;
+                status.lastComparison = null;
                 status.mode = 'shadow-running';
             });
             return originalFlag.apply(this, args);
@@ -65,7 +73,19 @@
                 // TurboWarp always executes first and remains authoritative.
                 const result = originalStep.apply(this, args);
                 if (status.mode === 'shadow-running') {
-                    safe(() => { f.step(handle); status.frames++; });
+                    safe(() => {
+                        f.step(handle);
+                        status.frames++;
+                        // Compare only once both schedulers have no active threads.
+                        // Still a diagnostic: wall-clock timing and inputs differ.
+                        const lithium = JSON.parse(f.dump(handle));
+                        const twThreads = vm.runtime.threads;
+                        if (lithium.threads === 0 && Array.isArray(twThreads) && twThreads.length === 0) {
+                            status.lastComparison = status.compare();
+                            status.mode = 'shadow-finished';
+                            console.info('[Lithium shadow] final state comparison', status.lastComparison);
+                        }
+                    });
                 }
                 return result;
             };
