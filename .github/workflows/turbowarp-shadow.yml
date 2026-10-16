@@ -12,6 +12,7 @@ on:
       - 'CMakeLists.txt'
       - 'third_party/**'
       - 'tests/wasm_smoke.js'
+      - 'tests/inject_shadow.test.mjs'
 
 permissions:
   contents: read
