@@ -1,0 +1,69 @@
+name: Lithium browser preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/turbowarp-wasm-rebase
+    paths:
+      - '.github/workflows/browser-preview.yml'
+      - 'CMakeLists.txt'
+      - 'runtime/**'
+      - 'third_party/**'
+      - 'web/**'
+      - 'tests/wasm_smoke.js'
+      - 'tests/projects/**'
+
+permissions:
+  contents: read
+
+jobs:
+  wasm-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout Lithium
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '4.0.12'
+
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure WebAssembly runtime
+        run: emcmake cmake -S . -B build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DLITHIUM_BUILD_TESTS=OFF
+
+      - name: Compile WebAssembly runtime
+        run: cmake --build build-wasm --parallel 2
+
+      - name: Smoke test WebAssembly in Node
+        run: node tests/wasm_smoke.js build-wasm/lithium_wasm.js
+
+      - name: Assemble standalone preview archive
+        run: |
+          mkdir -p preview/web preview/build-wasm
+          cp -R web/. preview/web/
+          cp build-wasm/lithium_wasm.js build-wasm/lithium_wasm.wasm preview/build-wasm/
+          cat > preview/START_HERE.txt <<'EOF'
+          Lithium browser preview (existing Lithium UI and WASM runtime).
+          This is NOT YET a TurboWarp fork or a completed new runtime.
+          Extract the ZIP, then run a local static HTTP server FROM this directory.
+          Example with Python 3: python3 -m http.server 8080
+          Navigate to http://localhost:8080/web/
+          Opening web/index.html using file:// will not load WebAssembly.
+          EOF
+          cd preview
+          zip -qr ../lithium-browser-preview.zip .
+
+      - name: Upload browser preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: lithium-browser-preview
+          path: lithium-browser-preview.zip
+          if-no-files-found: error
+          retention-days: 14
