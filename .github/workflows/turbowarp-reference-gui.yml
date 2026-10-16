@@ -1,0 +1,47 @@
+name: Vanilla TurboWarp GUI reference build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/turbowarp-wasm-rebase
+    paths:
+      - '.github/workflows/turbowarp-reference-gui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  gui-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Clone upstream GUI
+        run: git clone --depth 1 https://github.com/TurboWarp/scratch-gui.git /tmp/turbowarp-gui
+      - name: Record exact reference revision
+        run: |
+          git -C /tmp/turbowarp-gui rev-parse HEAD | tee "$GITHUB_WORKSPACE/turbowarp-reference-sha.txt"
+          node -e "let p=require('/tmp/turbowarp-gui/package.json'); console.log('GUI version:',p.version,'VM spec:',p.dependencies['scratch-vm'])"
+      - name: Install upstream's locked dependencies
+        working-directory: /tmp/turbowarp-gui
+        run: npm ci --no-audit --no-fund
+      - name: Build unmodified TurboWarp GUI
+        working-directory: /tmp/turbowarp-gui
+        run: npm run build
+      - name: Package reference editor
+        run: |
+          cd /tmp/turbowarp-gui/build
+          zip -qr "$GITHUB_WORKSPACE/turbowarp-reference-gui.zip" .
+      - name: Upload reference editor and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbowarp-reference-gui
+          path: |
+            turbowarp-reference-gui.zip
+            turbowarp-reference-sha.txt
+          retention-days: 14
+          if-no-files-found: error
