@@ -34,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build zip
       - name: Test HTML injection helper
-        run: node --test tests/inject_shadow.test.mjs
+        run: node --test tests/inject_shadow.test.mjs tests/compare_shadow.test.cjs
       - name: Build native Lithium to WebAssembly
         run: |
           emcmake cmake -S . -B build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DLITHIUM_BUILD_TESTS=OFF
@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir -p /tmp/turbowarp-gui/build/lithium
           cp build-wasm/lithium_wasm.js build-wasm/lithium_wasm.wasm /tmp/turbowarp-gui/build/lithium/
-          cp integration/shadow.js /tmp/turbowarp-gui/build/lithium/shadow.js
+          cp integration/shadow.js integration/compare.js /tmp/turbowarp-gui/build/lithium/
           node integration/inject_shadow.mjs /tmp/turbowarp-gui/build
       - name: Package combined editor
         run: |
