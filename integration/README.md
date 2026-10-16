@@ -22,8 +22,26 @@ Then visit `http://localhost:8080/`. The WASM files are served from
 not work.
 
 When the editor loads, browser DevTools provides `window.LithiumShadow`
-with `mode`, `frames`, `loadLog`, `lastError`, and
-`snapshot()` (when attached). These are diagnostic data, not a parity result.
+with `mode`, `frames`, `loadLog`, `lastError`, `snapshot()`, and
+`compare()` (when attached). `compare()` returns a structured report with
+`status` (`match`, `mismatch`, or `incomplete`), `differences`, and
+thread counts. The bridge also stores `lastComparison` and switches
+to `shadow-finished` when both engines finish.
+
+In the browser console, after running a project:
+
+```js
+const result = LithiumShadow.compare();
+console.log(result.status, result.differences);
+console.table(result.differences);
+```
+
+A `match` compares observable final state only, **not** scheduling semantics,
+exact timing or the absence of unsupported blocks. Check `loadLog` too.
+
+Comparison currently covers scalar variables, lists and sprite position,
+direction, size, visibility and costume index. It uses a relative numeric
+tolerance of 1e-9 and strict comparison of string and boolean values.
 
 ## Important limitations
 
