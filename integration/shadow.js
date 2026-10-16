@@ -82,7 +82,7 @@
             throw new Error('createLithium factory not found');
         }
         const module = await window.createLithium({
-            locateFile: file => './lithium/' + file
+            locateFile: file => '/lithium/' + file
         });
         let retries = 0;
         const timer = setInterval(() => {
