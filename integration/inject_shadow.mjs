@@ -7,6 +7,7 @@ import {join, resolve} from 'node:path';
 const dir = resolve(process.argv[2] || '');
 const targets = ['index.html', 'editor.html'];
 const scripts = '<script src="/lithium/lithium_wasm.js"></script>\n' +
+    '<script src="/lithium/compare.js"></script>\n' +
     '<script src="/lithium/shadow.js"></script>\n';
 let count = 0;
 for (const name of targets) {
