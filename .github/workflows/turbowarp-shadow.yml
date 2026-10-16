@@ -34,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build zip
       - name: Test HTML injection helper
-        run: node --test tests/inject_shadow.test.mjs tests/compare_shadow.test.cjs
+        run: node --test tests/inject_shadow.test.mjs tests/compare_shadow.test.cjs tests/bridge_shadow.test.cjs
       - name: Build native Lithium to WebAssembly
         run: |
           emcmake cmake -S . -B build-wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DLITHIUM_BUILD_TESTS=OFF
