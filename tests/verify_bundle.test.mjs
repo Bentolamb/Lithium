@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 
 const script = fileURLToPath(new URL('../integration/verify_bundle.mjs', import.meta.url));
 const names = ['lithium_wasm.js', 'compare.js', 'shadow.js', 'panel.js'];
-const html = '<html><body>' + names.map(x => `<script src="/lithium/${x}"></script>`).join('') +
+const html = '<html><body>' + names.map(x => `<script src="/lithium/${x}?v=development"></script>`).join('') +
     '</body></html>';
 function fixture() {
     const dir = mkdtempSync(join(tmpdir(), 'lithium-bundle-'));
@@ -39,7 +39,7 @@ test('stale two-script editor fails even when assets exist', () => {
     const dir = fixture();
     try {
         writeFileSync(join(dir, 'editor.html'), html.replace(
-            '<script src="/lithium/compare.js"></script>', ''));
+            '<script src="/lithium/compare.js?v=development"></script>', ''));
         const result = run(dir);
         assert.notEqual(result.status, 0);
         assert.match(result.stderr, /editor\.html/);
