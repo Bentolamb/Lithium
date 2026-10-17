@@ -90,3 +90,15 @@ test('two empty runtimes cannot pass without any loaded project', () => {
     assert.equal(result.match, false);
     assert.match(result.reason, /No project targets/);
 });
+
+test('special Scratch variable names do not mutate object prototypes', () => {
+    const source = vm();
+    source.runtime.targets[0].variables.special = {name:'__proto__',type:'',value:5};
+    const turbo = turboSnapshot(source);
+    assert.equal(Object.getPrototypeOf(turbo.targets[0].variables), null);
+    assert.equal(turbo.targets[0].variables['__proto__'], 5);
+    const a = lithium();
+    a.targets[0].variables = Object.assign(Object.create(null), a.targets[0].variables);
+    a.targets[0].variables['__proto__'] = 5;
+    assert.equal(compare(a, turbo).status, 'match');
+});
