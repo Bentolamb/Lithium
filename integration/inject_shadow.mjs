@@ -9,7 +9,8 @@ const targets = ['index.html', 'editor.html'];
 const sources = [
     '/lithium/lithium_wasm.js',
     '/lithium/compare.js',
-    '/lithium/shadow.js'
+    '/lithium/shadow.js',
+    '/lithium/panel.js'
 ];
 const scripts = sources.map(src => `<script src="${src}"></script>`).join('\n') + '\n';
 let count = 0;
@@ -20,12 +21,13 @@ for (const name of targets) {
     if (!/<\/body>/i.test(html)) throw Error(name + ': no closing body tag');
     // This catches both old two-script builds and complete three-script builds.
     // Remove existing bridge script tags, then insert the canonical ordered set.
-    html = html.replace(/<script\b[^>]*\bsrc=["']\/lithium\/(?:lithium_wasm|compare|shadow)\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>\s*/gi, '');
+    html = html.replace(/<script\b[^>]*\bsrc=["']\/lithium\/(?:lithium_wasm|compare|shadow|panel)\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>\s*/gi, '');
     html = html.replace(/<\/body>/i, scripts + '</body>');
     const found = sources.map(src => html.split(`<script src="${src}"></script>`).length - 1);
     if (found.some(n => n !== 1)) throw Error(name + ': missing or duplicated bridge script: ' + JSON.stringify(found));
     if (!(html.indexOf(sources[0]) < html.indexOf(sources[1]) &&
-          html.indexOf(sources[1]) < html.indexOf(sources[2]))) {
+          html.indexOf(sources[1]) < html.indexOf(sources[2]) &&
+          html.indexOf(sources[2]) < html.indexOf(sources[3]))) {
         throw Error(name + ': invalid bridge script order');
     }
     writeFileSync(path, html);
