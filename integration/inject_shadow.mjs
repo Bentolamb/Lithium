@@ -12,7 +12,10 @@ const sources = [
     '/lithium/shadow.js',
     '/lithium/panel.js'
 ];
-const scripts = sources.map(src => `<script src="${src}"></script>`).join('\n') + '\n';
+// A new workflow commit changes the URLs, preventing cached older bridge
+// scripts from being reused at the same localhost address.
+const version = (process.env.GITHUB_SHA || 'development').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+const scripts = sources.map(src => `<script src="${src}?v=${version}"></script>`).join('\n') + '\n';
 let count = 0;
 for (const name of targets) {
     const path = join(dir, name);
@@ -23,7 +26,7 @@ for (const name of targets) {
     // Remove existing bridge script tags, then insert the canonical ordered set.
     html = html.replace(/<script\b[^>]*\bsrc=["']\/lithium\/(?:lithium_wasm|compare|shadow|panel)\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>\s*/gi, '');
     html = html.replace(/<\/body>/i, scripts + '</body>');
-    const found = sources.map(src => html.split(`<script src="${src}"></script>`).length - 1);
+    const found = sources.map(src => html.split(`<script src="${src}?v=${version}"></script>`).length - 1);
     if (found.some(n => n !== 1)) throw Error(name + ': missing or duplicated bridge script: ' + JSON.stringify(found));
     if (!(html.indexOf(sources[0]) < html.indexOf(sources[1]) &&
           html.indexOf(sources[1]) < html.indexOf(sources[2]) &&
