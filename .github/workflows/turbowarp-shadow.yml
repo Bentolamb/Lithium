@@ -17,6 +17,12 @@ on:
 permissions:
   contents: read
 
+# Only the newest branch build is useful; avoid spending hosted CI minutes
+# compiling intermediate commits pushed during one development session.
+concurrency:
+  group: lithium-shadow-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   editor-with-shadow-runtime:
     runs-on: ubuntu-latest
