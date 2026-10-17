@@ -26,8 +26,11 @@
             threads: Array.isArray(vm.runtime.threads) ? vm.runtime.threads.length : null,
             ambiguities,
             targets: vm.runtime.targets.map(t => {
-                const vars = {};
-                const lists = {};
+                // Scratch variable names are user-controlled, including names
+                // such as "__proto__". Null-prototype dictionaries prevent
+                // special names from disappearing or modifying the prototype.
+                const vars = Object.create(null);
+                const lists = Object.create(null);
                 const targetName = t.getName();
                 for (const variable of Object.values(t.variables || {})) {
                     const isList = variable.type === 'list';
