@@ -1,59 +1,77 @@
-# TurboWarp/Lithium shadow runtime
+# TurboWarp × Lithium: shadow runtime developer preview
 
-This milestone builds **the unmodified TurboWarp GUI and JavaScript VM**, then
-injects a separate Lithium WebAssembly instance into the generated static site.
-The JavaScript VM remains authoritative. The shadow currently mirrors green flag,
-stop-all, and runtime steps for diagnostics only.
+This milestone builds the **official TurboWarp editor and JavaScript VM**, then
+loads a separate Lithium C++/WebAssembly runtime alongside it. **TurboWarp remains
+authoritative** for all visible Scratch project behavior. The Wasm engine
+executes a copy of the project only for comparison.
 
-## Preview
+## Running the preview
 
-GitHub Actions workflow: `turbowarp-shadow.yml`. The artifact
-`turbowarp-lithium-shadow-editor` contains a ZIP of the complete static website
-and `turbowarp-source-sha.txt` for provenance.
+The GitHub Actions workflow `turbowarp-shadow.yml` builds the combined website,
+tests the Wasm C API, runs JavaScript integration tests, verifies the package,
+and launches Chromium to smoke-test the editor and a real 1,000-iteration Scratch
+loop. Successful runs publish:
 
-Serve the **extracted site directory as the HTTP root**, for example:
+- `turbowarp-lithium-shadow-editor`: complete extracted static site ZIP
+- `lithium-shadow-browser-screenshot`: screenshot taken in hosted Chromium
+
+Serve the extracted site **as the HTTP root**, for example:
 
 ```sh
 python3 -m http.server 8080
 ```
 
-Then visit `http://localhost:8080/`. The WASM files are served from
-`/lithium/`. Opening with `file://` or serving from a nested subdirectory will
-not work.
+Visit `http://localhost:8080/editor.html`. Do not open `file://` or serve
+the site from a nested directory: the bridge assets use paths under
+`/lithium/`. New builds use versioned asset URLs to avoid serving previously
+cached bridge scripts from the same localhost address.
 
-When the editor loads, browser DevTools provides `window.LithiumShadow`
-with `mode`, `frames`, `loadLog`, `lastError`, `snapshot()`, and
-`compare()` (when attached). `compare()` returns a structured report with
-`status` (`match`, `mismatch`, or `incomplete`), `differences`, and
-thread counts. The bridge also stores `lastComparison` and switches
-to `shadow-finished` when both engines finish.
+## In-editor diagnostics
 
-In the browser console, after running a project:
+The lower-left **Lithium shadow** chip opens a compact diagnostics panel.
+After clicking the green flag, the panel displays execution status, shadow
+frame count, and any final-state differences. It can re-run the comparison or
+copy a JSON report. No developer console is needed for routine checks.
+
+For more detail, open browser DevTools:
 
 ```js
-const result = LithiumShadow.compare();
-console.log(result.status, result.differences);
-console.table(result.differences);
+LithiumShadow.version
+LithiumShadow.compare()
+LithiumShadow.lastComparison
+LithiumShadow.snapshot()
 ```
 
-A `match` compares observable final state only, **not** scheduling semantics,
-exact timing or the absence of unsupported blocks. Check `loadLog` too.
+Possible comparison statuses:
 
-Comparison currently covers scalar variables, lists and sprite position,
-direction, size, visibility and costume index. It uses a relative numeric
-tolerance of 1e-9 and strict comparison of string and boolean values.
+| Status | Meaning |
+|---|---|
+| `not-run` | The green flag has not been pressed in this session |
+| `incomplete` | Both engines have not completed the current run |
+| `match` | Both completed; compared final-state fields agree |
+| `mismatch` | Both completed; reported fields disagree |
+| `unsupported` | Lithium rejected the project or reported dropped/unknown opcodes |
+| `aborted` | The run was stopped before completion |
+| `error` | The shadow runtime threw an exception |
 
-## Important limitations
+Only `match` with `match: true` indicates a successful final-state comparison.
+A successful match does **not** establish exact timing, scheduling, event
+semantics, rendering equivalence, or full Scratch compatibility.
 
-- This is **not** a replacement VM, full TurboWarp fork, or evidence of
-  execution parity. The two schedulers do not have synchronized virtual clocks.
-- Unsupported Lithium opcodes may load as no-ops. Check `loadLog`.
-- Input events, clones, extensions, storage, and renderer-side effects are not
-  mirrored. Scratch results continue to come entirely from TurboWarp.
-- A missing runtime hook produces `ready-no-step-hook`. Project/load failures
-  are surfaced in status and console without blocking the original editor.
-- Upstream TurboWarp remains untouched; the integration takes place in the
-  generated site, allowing each engine to be tested independently.
+The comparator checks scalar variables, lists, original/clone target counts,
+and sprite position, direction, size, visibility, and costume index. It uses
+relative numeric tolerance `1e-9` for finite numbers and strict string/boolean
+equality. Duplicated variable names can be ambiguous because the current C++
+JSON snapshot indexes values by name, and input timing is not synchronized.
 
-Next: add deterministic differential execution with input/clock synchronization,
-then selectively dispatch proven opcode families to Wasm with JS fallback.
+## Remaining work
+
+- Record and replay input events using synchronized virtual clocks and seeds
+- Compare broadcasts, clones, sounds, sensing, pen effects, timing, and extensions
+- Introduce a feature-gated runtime interface with proven Wasm execution and
+  TurboWarp JavaScript fallback
+- Preserve Lithium optimizations, Packin, OutList, and other established features
+- Complete UI branding, project editing workflows, packaging and cross-platform
+  release testing
+
+This is a **developer preview**, not yet a completed Lithium application.
