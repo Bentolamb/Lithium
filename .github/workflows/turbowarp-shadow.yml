@@ -65,6 +65,22 @@ jobs:
           node integration/inject_shadow.mjs /tmp/turbowarp-gui/build
       - name: Verify complete browser bundle
         run: node integration/verify_bundle.mjs /tmp/turbowarp-gui/build
+      - name: Install Playwright Chromium for browser smoke test
+        run: |
+          npm install --prefix /tmp/lithium-playwright --no-save --no-package-lock playwright@1.56.1
+          /tmp/lithium-playwright/node_modules/.bin/playwright install chromium --with-deps
+      - name: Smoke-test full editor in Chromium
+        env:
+          NODE_PATH: /tmp/lithium-playwright/node_modules
+        run: node tests/browser_shadow_smoke.cjs /tmp/turbowarp-gui/build
+      - name: Upload browser smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lithium-shadow-browser-screenshot
+          path: lithium-browser-smoke.png
+          if-no-files-found: warn
+          retention-days: 14
       - name: Package combined editor
         run: |
           cd /tmp/turbowarp-gui/build
