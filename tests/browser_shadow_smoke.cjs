@@ -84,6 +84,40 @@ async function main() {
         assert.equal(await page.locator('#lithium-diagnostics-panel').isVisible(), true);
 
         console.log('PASS: TurboWarp editor initializes with the Lithium Wasm shadow and diagnostic UI');
+
+        // An actual differential test in Chromium, not merely an idle-runtime
+        // comparison. This fixture uses the core Scratch blocks implemented by
+        // both engines and should end with count = 1000.
+        const projectJson = fs.readFileSync(path.join(__dirname, 'projects', 'count.json'), 'utf8');
+        await page.evaluate(async json => {
+            await window.vm.loadProject(json);
+            window.vm.setTurboMode(true);
+            window.vm.greenFlag();
+        }, projectJson);
+        await page.waitForFunction(() => {
+            const shadow = window.LithiumShadow;
+            return shadow && ['shadow-finished', 'unsupported-project', 'error'].includes(shadow.mode);
+        }, null, {timeout: 120000});
+        const outcome = await page.evaluate(() => {
+            const shadow = window.LithiumShadow;
+            const result = shadow.compare();
+            return {
+                mode: shadow.mode,
+                comparison: result,
+                loadLog: shadow.loadLog,
+                wasmCounter: shadow.snapshot()?.targets?.find(t => t.isStage)?.variables?.count,
+                turboCounter: window.vm.runtime.targets.find(t => t.isStage)
+                    .lookupVariableByNameAndType('count', '')?.value
+            };
+        });
+        console.log('Real project differential test:', JSON.stringify(outcome, null, 2));
+        assert.equal(outcome.mode, 'shadow-finished');
+        assert.equal(outcome.comparison.status, 'match');
+        assert.equal(outcome.comparison.match, true);
+        assert.equal(outcome.wasmCounter, 1000);
+        assert.equal(outcome.turboCounter, 1000);
+        console.log('PASS: 1000-iteration Scratch loop matches across TurboWarp and WebAssembly');
+
         if (issues.length) console.warn('Nonfatal upstream page errors:', issues.slice(0, 10));
     } finally {
         if (page) {
