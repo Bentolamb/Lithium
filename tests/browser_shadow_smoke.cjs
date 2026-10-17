@@ -76,7 +76,7 @@ async function main() {
         assert.equal(result.comparison.status, 'not-run');
         assert.equal(result.comparison.match, false);
         for (const asset of ['lithium_wasm.js', 'compare.js', 'shadow.js', 'panel.js']) {
-            assert.ok(result.scripts.some(src => src.endsWith('/lithium/' + asset)),
+            assert.ok(result.scripts.some(src => new URL(src).pathname.endsWith('/lithium/' + asset)),
                 'Missing integration script: ' + asset);
         }
 
