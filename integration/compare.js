@@ -21,14 +21,23 @@
         if (!vm || !vm.runtime || !Array.isArray(vm.runtime.targets)) {
             throw new Error('TurboWarp runtime targets unavailable');
         }
+        const ambiguities = [];
         return {
             threads: Array.isArray(vm.runtime.threads) ? vm.runtime.threads.length : null,
+            ambiguities,
             targets: vm.runtime.targets.map(t => {
                 const vars = {};
                 const lists = {};
+                const targetName = t.getName();
                 for (const variable of Object.values(t.variables || {})) {
-                    if (variable.type === 'list') lists[variable.name] = Array.from(variable.value || []);
-                    else if (variable.type === '') vars[variable.name] = variable.value;
+                    const isList = variable.type === 'list';
+                    if (!isList && variable.type !== '') continue;
+                    const destination = isList ? lists : vars;
+                    if (Object.prototype.hasOwnProperty.call(destination, variable.name)) {
+                        ambiguities.push(targetName + ': duplicated ' +
+                            (isList ? 'list ' : 'variable ') + JSON.stringify(variable.name));
+                    }
+                    destination[variable.name] = isList ? Array.from(variable.value || []) : variable.value;
                 }
                 return {
                     name: t.getName(),
@@ -97,9 +106,16 @@
             }
         }
         const running = lithium.threads !== 0 || turbo.threads !== 0;
+        const ambiguities = turbo.ambiguities || [];
+        const emptyProject = lithium.targets.length === 0 || turbo.targets.length === 0;
+        const cannotVerify = ambiguities.length > 0 || emptyProject;
         return {
-            status: running ? 'incomplete' : (differences.length ? 'mismatch' : 'match'),
-            match: !running && differences.length === 0,
+            status: running ? 'incomplete' : cannotVerify ? 'unsupported' :
+                (differences.length ? 'mismatch' : 'match'),
+            match: !running && !cannotVerify && differences.length === 0,
+            reason: emptyProject ? 'No project targets were loaded' :
+                ambiguities.length ? 'Duplicate variable/list names make name-keyed snapshots ambiguous' : undefined,
+            ambiguities,
             differences,
             comparedTargets: Math.min(lithium.targets.length, turbo.targets.length),
             lithiumThreads: lithium.threads,
