@@ -43,10 +43,11 @@ test('upgrades a stale two-script injection into three ordered scripts', () => {
         const result = spawnSync(process.execPath, [script, dir], {encoding:'utf8'});
         assert.equal(result.status, 0, result.stderr);
         const html = readFileSync(file, 'utf8');
-        for (const name of ['lithium_wasm', 'compare', 'shadow']) {
+        for (const name of ['lithium_wasm', 'compare', 'shadow', 'panel']) {
             assert.equal(html.split('/lithium/' + name + '.js').length - 1, 1);
         }
         assert.ok(html.indexOf('/lithium/lithium_wasm.js') < html.indexOf('/lithium/compare.js'));
         assert.ok(html.indexOf('/lithium/compare.js') < html.indexOf('/lithium/shadow.js'));
+        assert.ok(html.indexOf('/lithium/shadow.js') < html.indexOf('/lithium/panel.js'));
     } finally { rmSync(dir, {recursive:true,force:true}); }
 });
