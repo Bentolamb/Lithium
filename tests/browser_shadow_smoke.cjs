@@ -97,7 +97,5 @@ async function main() {
 main().catch(error => {
     console.error('Browser smoke failed:', error);
     process.exitCode = 1;
-    // main() normally closes the server. A failure before page setup
-    // still terminates promptly because process.exitCode is set.
-    server.close();
+    // The finally block in main() already closes the browser and server.
 });
