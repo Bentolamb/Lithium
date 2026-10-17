@@ -73,3 +73,20 @@ test('different clone counts cannot pass', () => {
     assert.equal(result.status,'mismatch');
     assert.match(result.differences[0].path,/targetCount/);
 });
+
+test('name collisions are never reported as compatible', () => {
+    const source = vm();
+    source.runtime.targets[0].variables.other = {name:'counter',type:'',value:10};
+    const actual = turboSnapshot(source);
+    assert.equal(actual.ambiguities.length, 1);
+    const result = compare(lithium(), actual);
+    assert.equal(result.status, 'unsupported');
+    assert.equal(result.match, false);
+    assert.match(result.reason, /Duplicate variable/);
+});
+test('two empty runtimes cannot pass without any loaded project', () => {
+    const result = compare({threads:0,targets:[]}, {threads:0,targets:[]});
+    assert.equal(result.status, 'unsupported');
+    assert.equal(result.match, false);
+    assert.match(result.reason, /No project targets/);
+});
