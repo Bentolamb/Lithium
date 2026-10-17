@@ -23,10 +23,14 @@ for (const name of ['index.html', 'editor.html']) {
     const html = readFileSync(path, 'utf8');
     let previous = -1;
     for (const file of scripts) {
-        const tag = `<script src="/lithium/${file}"></script>`;
+        const tag = `<script src="/lithium/${file}?v=`;
         const first = html.indexOf(tag);
         const second = first < 0 ? -1 : html.indexOf(tag, first + tag.length);
-        if (first < 0 || second !== -1) throw Error(name + ': missing/duplicate script ' + file);
+        if (first < 0 || second !== -1) throw Error(name + ': missing/duplicate versioned script ' + file);
+        const end = html.indexOf('"></script>', first + tag.length);
+        if (end < 0 || !/^[a-zA-Z0-9]+$/.test(html.slice(first + tag.length, end))) {
+            throw Error(name + ': malformed version token for ' + file);
+        }
         if (first <= previous) throw Error(name + ': wrong script order at ' + file);
         previous = first;
     }
